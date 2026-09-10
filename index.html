@@ -754,7 +754,11 @@ const gebco = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
 });
 const esri = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
-  attribution: 'Esri, GEBCO, NOAA, Garmin', maxZoom: 13
+  attribution: 'Esri, GEBCO, NOAA, Garmin', maxNativeZoom: 10, maxZoom: 19   // no Brazil tiles beyond z10
+});
+const sat = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: 'Esri, Maxar, Earthstar Geographics', maxZoom: 19
 });
 const esriRef = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
@@ -916,11 +920,11 @@ chart.on('remove', () => { chartMsg.style.display = 'none'; chart.clearLayers();
 let chartTimer;
 map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); chartTimer = setTimeout(refreshChart, 350); } });
 
-esri.addTo(map);   // fast, cached; GMRT WMS renders on demand (7–9 s per tile) so it is optional
+sat.addTo(map);    // full coverage at every zoom; GMRT WMS renders on demand (7–9 s per tile) so it is optional
 dhn.addTo(map);
 gpsCtl.addTo(map);
 L.control.layers(
-  { 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
+  { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
   { 'Official charts (DHN 22200/930/902/912)': dhn, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: false }
 ).addTo(map);
