@@ -707,6 +707,8 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   white-space:nowrap; transform:translate(-50%,-50%); text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff; }
 .ctr-label { font-family:'Outfit',sans-serif; font-size:10px; color:#1f5f8b; white-space:nowrap;
   transform:translate(-50%,-50%); background:rgba(255,255,255,0.85); padding:0 3px; border-radius:3px; }
+.gps-ctl a { font-size:18px; line-height:30px; }
+.gps-ctl.on a { background:#c8102e !important; color:#fff !important; }
 .chart-msg { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); z-index:900;
   font-family:'Outfit',sans-serif; font-size:12px; color:#0f2e3d; background:rgba(250,247,242,0.92);
   border:1px solid rgba(15,46,61,0.2); border-radius:6px; padding:3px 9px; pointer-events:none; }
@@ -719,7 +721,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 <body>
 <nav>
   <span class="wordmark">Wave Advisors</span>
-  <span class="nav-sub">GMRT · depth chart</span>
+  <span class="nav-sub">DHN charts · GMRT</span>
 </nav>
 <div class="titlebar">
   <h1><span>Bathymetry</span><span class="title-slash">//</span><span class="title-lite">Recife &amp; Northeast Brazil coast</span></h1>
@@ -727,8 +729,8 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">GMRT (Ryan et al. 2009, CC-BY) · contours &amp; soundings from the ~60 m GMRT grid · GEBCO · Esri Ocean · OpenSeaMap</span>
-  <span class="src">NOT FOR NAVIGATION — survey grid, not an official nautical chart</span>
+  <span class="src" id="attrib">Cartas 930 · 902 · 912 © DHN/CHM Marinha do Brasil (uso não comercial) · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script>/* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
@@ -738,6 +740,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 //# sourceMappingURL=leaflet.js.map</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script>
+const readout = document.getElementById('readout');
 const map = L.map('map', { zoomControl: true, worldCopyJump: true })
   .setView([-7.4, -34.2], 8);
 
@@ -757,6 +760,43 @@ const esriRef = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 13, opacity: 0.9
 });
+
+/* Official Brazilian Navy (DHN/CHM) raster charts 930, 902, 912 — tiled from the free GeoTIFFs. Non-commercial use. */
+const dhn = L.tileLayer('charts/{z}/{x}/{y}.webp', {
+  minZoom: 9, maxNativeZoom: 17, maxZoom: 19, opacity: 0.95,
+  bounds: [[-8.43, -35.01], [-7.58, -34.39]],
+  attribution: 'Cartas 930/902/912 © DHN/CHM Marinha do Brasil'
+});
+
+/* GPS position */
+const gpsCtl = L.control({ position: 'topleft' });
+gpsCtl.onAdd = () => {
+  const d = L.DomUtil.create('div', 'leaflet-bar gps-ctl');
+  d.innerHTML = '<a href="#" title="My position">◎</a>';
+  L.DomEvent.on(d, 'click', e => { L.DomEvent.stop(e); toggleGps(); });
+  return d;
+};
+let gpsWatch = null, gpsMarker = null, gpsRing = null;
+function toggleGps() {
+  const btn = document.querySelector('.gps-ctl');
+  if (gpsWatch !== null) {
+    navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null;
+    if (gpsMarker) { map.removeLayer(gpsMarker); map.removeLayer(gpsRing); gpsMarker = gpsRing = null; }
+    btn.classList.remove('on'); return;
+  }
+  if (!navigator.geolocation) { readout.textContent = 'no GPS available'; return; }
+  btn.classList.add('on');
+  let first = true;
+  gpsWatch = navigator.geolocation.watchPosition(pos => {
+    const ll = [pos.coords.latitude, pos.coords.longitude], acc = pos.coords.accuracy || 0;
+    if (!gpsMarker) {
+      gpsRing = L.circle(ll, { radius: acc, color: '#c8102e', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
+      gpsMarker = L.circleMarker(ll, { radius: 7, color: '#fff', weight: 2, fillColor: '#c8102e', fillOpacity: 1, interactive: false }).addTo(map);
+    } else { gpsRing.setLatLng(ll).setRadius(acc); gpsMarker.setLatLng(ll); }
+    if (first) { map.setView(ll, Math.max(map.getZoom(), 14)); first = false; }
+  }, err => { readout.textContent = 'GPS: ' + err.message; btn.classList.remove('on'); gpsWatch = null; },
+  { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
+}
 
 const seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
   attribution: 'OpenSeaMap', maxZoom: 18, maxNativeZoom: 18
@@ -877,10 +917,11 @@ let chartTimer;
 map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); chartTimer = setTimeout(refreshChart, 350); } });
 
 gmrt.addTo(map);
-chart.addTo(map);
+dhn.addTo(map);
+gpsCtl.addTo(map);
 L.control.layers(
   { 'GMRT (finest, multibeam)': gmrt, 'GEBCO shaded': gebco, 'Esri Ocean basemap': esri },
-  { 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+  { 'Official chart (DHN 930/902/912)': dhn, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: false }
 ).addTo(map);
 
@@ -894,7 +935,7 @@ for (const [n, la, lo] of places) {
     .bindTooltip(n, { permanent: true, direction: 'right', offset: [7,0], className:'city-tip' });
 }
 
-const readout = document.getElementById('readout');
+
 let busy = false;
 map.on('click', async e => {
   if (busy) return;
