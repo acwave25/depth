@@ -729,7 +729,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas 930 · 902 · 912 © DHN/CHM Marinha do Brasil (uso não comercial) · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas 22200 · 930 · 902 · 912 © DHN/CHM Marinha do Brasil (uso não comercial) · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script>/* @preserve
@@ -761,11 +761,11 @@ const esriRef = L.tileLayer(
   maxZoom: 13, opacity: 0.9
 });
 
-/* Official Brazilian Navy (DHN/CHM) raster charts 930, 902, 912 — tiled from the free GeoTIFFs. Non-commercial use. */
+/* Official Brazilian Navy (DHN/CHM) raster charts 22200 (Cabedelo–Maceió coast), 930, 902, 912 — tiled from the free GeoTIFFs. Non-commercial use. */
 const dhn = L.tileLayer('charts/{z}/{x}/{y}.webp', {
   minZoom: 9, maxNativeZoom: 17, maxZoom: 19, opacity: 0.95,
-  bounds: [[-8.43, -35.01], [-7.58, -34.39]],
-  attribution: 'Cartas 930/902/912 © DHN/CHM Marinha do Brasil'
+  bounds: [[-9.92, -36.01], [-6.91, -33.91]],
+  attribution: 'Cartas 22200/930/902/912 © DHN/CHM Marinha do Brasil'
 });
 
 /* GPS position */
@@ -921,13 +921,14 @@ dhn.addTo(map);
 gpsCtl.addTo(map);
 L.control.layers(
   { 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official chart (DHN 930/902/912)': dhn, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+  { 'Official charts (DHN 22200/930/902/912)': dhn, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: false }
 ).addTo(map);
 
 const places = [
   ['Recife', -8.05, -34.88], ['Natal', -5.79, -35.21], ['João Pessoa', -7.12, -34.85],
   ['Maceió', -9.67, -35.74], ['F. de Noronha', -3.85, -32.42], ['Atol das Rocas', -3.87, -33.82],
+  ['Porto de Galinhas', -8.51, -35.00], ['Suape', -8.39, -34.95],
 ];
 for (const [n, la, lo] of places) {
   L.marker([la, lo], { icon: L.divIcon({ className:'city-dot', iconSize:[10,10] }) })

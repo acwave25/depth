@@ -5,43 +5,43 @@
     "https://stac-extensions.github.io/projection/v2.0.0/schema.json",
     "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
   ],
-  "id":"ports.vrt",
+  "id":"three.vrt",
   "type":"Feature",
   "bbox":[
-    -34.999999999999957,
-    -8.4250073255517801,
-    -34.803339354087946,
-    -7.9900000027024527
+    -35.000000000019476,
+    -8.4250064712873236,
+    -34.39999662229252,
+    -7.5833332763399595
   ],
   "geometry":{
     "type":"Polygon",
     "coordinates":[
       [
         [
-          -34.999999999999957,
-          -8.4250073255517801
+          -35.000000000019476,
+          -8.4250064712873236
         ],
         [
-          -34.999999999999957,
-          -7.9900000027024527
+          -35.000000000019476,
+          -7.5833332763399595
         ],
         [
-          -34.803339354087946,
-          -7.9900000027024527
+          -34.39999662229252,
+          -7.5833332763399595
         ],
         [
-          -34.803339354087946,
-          -8.4250073255517801
+          -34.39999662229252,
+          -8.4250064712873236
         ],
         [
-          -34.999999999999957,
-          -8.4250073255517801
+          -35.000000000019476,
+          -8.4250064712873236
         ]
       ]
     ]
   },
   "properties":{
-    "datetime":"2026-09-10T18:39:57Z",
+    "datetime":"2026-09-10T18:57:55Z",
     "start_datetime":"0001-01-01T00:00:00.000Z",
     "end_datetime":"9999-12-31T23:59:59.999Z",
     "tiles:tile_matrix_sets":{
@@ -66,42 +66,16 @@
         "tileMatrix":[
           {
             "type":"TileMatrixType",
-            "identifier":"15",
-            "scaleDenominator":17061.836670798271,
+            "identifier":"14",
+            "scaleDenominator":34123.673341596543,
             "topLeftCorner":[
               -20037508.342789244,
               20037508.342789244
             ],
             "tileWidth":256,
             "tileHeight":256,
-            "matrixWidth":32768,
-            "matrixHeight":32768
-          },
-          {
-            "type":"TileMatrixType",
-            "identifier":"16",
-            "scaleDenominator":8530.9183353991357,
-            "topLeftCorner":[
-              -20037508.342789244,
-              20037508.342789244
-            ],
-            "tileWidth":256,
-            "tileHeight":256,
-            "matrixWidth":65536,
-            "matrixHeight":65536
-          },
-          {
-            "type":"TileMatrixType",
-            "identifier":"17",
-            "scaleDenominator":4265.4591676995678,
-            "topLeftCorner":[
-              -20037508.342789244,
-              20037508.342789244
-            ],
-            "tileWidth":256,
-            "tileHeight":256,
-            "matrixWidth":131072,
-            "matrixHeight":131072
+            "matrixWidth":16384,
+            "matrixHeight":16384
           }
         ]
       }
@@ -110,39 +84,27 @@
       "GoogleMapsCompatible":{
         "url":"#GoogleMapsCompatible",
         "limits":{
-          "15":{
-            "min_tile_col":13198,
-            "max_tile_col":13216,
-            "min_tile_row":17113,
-            "max_tile_row":17153
-          },
-          "16":{
-            "min_tile_col":26396,
-            "max_tile_col":26432,
-            "min_tile_row":34227,
-            "max_tile_row":34307
-          },
-          "17":{
-            "min_tile_col":52792,
-            "max_tile_col":52864,
-            "min_tile_row":68454,
-            "max_tile_row":68614
+          "14":{
+            "min_tile_col":6599,
+            "max_tile_col":6626,
+            "min_tile_row":8538,
+            "max_tile_row":8576
           }
         }
       }
     },
     "proj:code":"EPSG:3857",
     "proj:shape":[
-      41216,
-      18688
+      9984,
+      7168
     ],
     "proj:transform":[
-      1.194328566955879,
+      9.5546285356470317,
       0.0,
       -3896453.9538651449,
       0.0,
-      -1.194328566955879,
-      40967189.679723062,
+      -9.5546285356470317,
+      40921327.462751962,
       0.0,
       0.0,
       0.0
