@@ -916,11 +916,11 @@ chart.on('remove', () => { chartMsg.style.display = 'none'; chart.clearLayers();
 let chartTimer;
 map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); chartTimer = setTimeout(refreshChart, 350); } });
 
-gmrt.addTo(map);
+esri.addTo(map);   // fast, cached; GMRT WMS renders on demand (7–9 s per tile) so it is optional
 dhn.addTo(map);
 gpsCtl.addTo(map);
 L.control.layers(
-  { 'GMRT (finest, multibeam)': gmrt, 'GEBCO shaded': gebco, 'Esri Ocean basemap': esri },
+  { 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
   { 'Official chart (DHN 930/902/912)': dhn, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: false }
 ).addTo(map);
