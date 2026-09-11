@@ -760,6 +760,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .time-ctl .hint { font-size:10px; opacity:0.55; margin-bottom:3px; }
 .time-ctl .summary { font-size:12px; line-height:1.35; margin:0 0 4px; }
 .time-ctl { max-width:260px; }
+.gibs-screen { mix-blend-mode:screen; }   /* night lights ships a black background */
 .cond-card { pointer-events:none; }
 .cond-card .cc { transform:translate(-50%,-50%); font-family:var(--font-mono); font-size:10.5px;
   line-height:1.35; white-space:nowrap; color:#0f2e3d; background:rgba(250,247,242,0.92);
@@ -1652,10 +1653,15 @@ alerts.on('remove', () => { clearInterval(alertTimer); alerts.clearLayers(); });
 /* ---------- NASA GIBS imagery: sea surface temperature and yesterday's true colour ----------
    GIBS needs a date in the path. Today's granules may not be published yet, so true colour asks
    for yesterday; the analysed SST product resolves 'default' to its own latest day. */
+// GIBS answers 404 where a satellite swath has no data that day, which Leaflet draws as a broken
+// image unless it is handed a transparent tile instead.
+const BLANK_TILE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 const gibs = (layer, level, ext, date, opts) => L.tileLayer(
   'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/' + layer + '/default/' + date +
   '/GoogleMapsCompatible_Level' + level + '/{z}/{y}/{x}.' + ext,
-  Object.assign({ maxNativeZoom: level, maxZoom: 19, attribution: 'NASA EOSDIS GIBS' }, opts));
+  Object.assign({ maxNativeZoom: level, maxZoom: 19, errorTileUrl: BLANK_TILE,
+    attribution: 'NASA EOSDIS GIBS' }, opts));
+const daysBack = n => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
 
 const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
 /* These two are coarse global products: sea surface temperature is about a kilometre per pixel and
@@ -2489,7 +2495,7 @@ L.control.layers(
   { 'Official nautical charts': charts, 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
    'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
    'Shipping chokepoints (IMF)': chokepoints, 'Tide gauges, measured (NOAA)': tides, 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
-   'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+   'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Dust and aerosol (NASA)': dust, 'Night lights, fishing fleets (NASA)': nightLights, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
 
@@ -2530,7 +2536,18 @@ function onZoom() {
 }
 /* Leaflet simply stops drawing a layer past its maxZoom, which looks like a broken toggle unless
    the page says what happened. */
-const COARSE = [[sst, 9, 'Sea surface temperature'], [trueColor, 11, 'Satellite imagery'], [radar, 10, 'Rain radar']];
+/* Four more NASA products. Each publishes on its own lag — asking for today gives 404s — and each
+   stops at its own matrix level, past which the server answers 400 rather than an enlarged tile. */
+const chloro = gibs('VIIRS_NOAA20_Chlorophyll_a', 7, 'png', daysBack(2), { opacity: 0.65, maxZoom: 9 });
+const seaIce = gibs('GHRSST_L4_GAMSSA_GDS2_Sea_Ice_Concentration', 6, 'png', daysBack(1), { opacity: 0.55, maxZoom: 8 });
+const dust = gibs('MODIS_Terra_Aerosol', 6, 'png', daysBack(1), { opacity: 0.6, maxZoom: 8 });
+// at-sensor radiance keeps the transient lights, which is how fishing fleets show up at all;
+// it is an opaque black raster, so it is blended rather than laid flat over the chart
+const nightLights = gibs('VIIRS_SNPP_DayNightBand_At_Sensor_Radiance', 8, 'png', daysBack(1),
+  { opacity: 0.7, maxZoom: 10, className: 'gibs-screen' });
+
+const COARSE = [[sst, 9, 'Sea surface temperature'], [trueColor, 11, 'Satellite imagery'], [radar, 10, 'Rain radar'],
+  [chloro, 9, 'Chlorophyll'], [seaIce, 8, 'Sea ice'], [dust, 8, 'Dust and aerosol'], [nightLights, 10, 'Night lights']];
 function coarseNote() {
   const z = map.getZoom();
   const hidden = COARSE.filter(c => map.hasLayer(c[0]) && z > c[1]);
