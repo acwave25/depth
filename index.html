@@ -767,6 +767,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   border:1px solid rgba(15,46,61,0.18); border-left-width:3px; border-left-style:solid;
   border-radius:4px; padding:2px 5px; }
 .cond-card .cc b { font-weight:600; }
+.cond-card .cc.dark-cell { border-left-color:#4a5b63; color:#8497a0; }
 .cond-card .cc i { display:inline-block; width:40px; font-style:normal; color:#8497a0;
   font-size:9.5px; letter-spacing:.04em; text-transform:uppercase; }
 .time-ctl b { font-weight:500; }
@@ -2275,7 +2276,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && measuring)
 /* ---------- Wind and sea state: Open-Meteo (free, no key, CORS open) ----------
    One hourly fetch per view covers 3 days, so dragging the time slider is instant. */
 const FCST_HOURS = 72;
-let fcstIdx = 0, fcstTimes = null, fcstJumped = false;
+let fcstIdx = 0, fcstTimes = null;
 
 const COND_MAX_Z = 11;          // Open-Meteo resolves ~11 km; closer in, every cell holds the same value
 
@@ -2337,6 +2338,8 @@ function condIcon(d) {
 
   if (condMode === 'sun') {
     if (s == null) return null;
+    if (s <= 20) return L.divIcon({ className: 'cond-card', iconSize: null,
+      html: '<div class="cc dark-cell">dark</div>' });
     const col = solarColor(s), r = 9 + Math.min(9, s / 120);
     const rays = [0, 45, 90, 135, 180, 225, 270, 315].map(a =>
       '<line transform="rotate(' + a + ')" x1="0" y1="' + (-r - 2.5) + '" x2="0" y2="' + (-r - 6.5) +
@@ -2443,7 +2446,6 @@ async function fetchConditions() {
       };
     });
     fcstTimes = A[0] && A[0].hourly ? A[0].hourly.time : null;
-    nightJump();
     drawConditions();
     timeCtl.refresh();
   } catch (e) { if (my === condToken) conditions.clearLayers(); }
@@ -2459,16 +2461,31 @@ function drawConditions() {
   }
 }
 
-/* Switched on after dark the sun reads zero everywhere, which looks like a broken layer, so jump
-   the clock to the next daylight peak instead. Only when the sun is what you asked to see. */
-function nightJump() {
-  if (condMode !== 'sun' || !condData || !condData.length) return;
+/* The sun layer used to jump the clock to the next daylight peak when switched on after dark.
+   It showed tomorrow's figures over tonight's sea, which is a lie however it is labelled. It now
+   draws the hour you are actually looking at; when that hour is dark it says so, and the clock
+   slider is there for anyone who wants tomorrow's yield. */
+/* Says how far forward the clock has to go for daylight, so a dark map is an answer, not a fault. */
+function sunDownHint() {
+  const p = nextPeak();
+  if (p == null) return 'sun is down across this view';
+  const t = fcstTimes && fcstTimes[p] ? new Date(fcstTimes[p] + 'Z') : null;
+  return 'sun is down across this view — slide to +' + (p - fcstIdx) + ' h' +
+    (t ? ' (' + t.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) + ')' : '') +
+    ' for the next daylight peak';
+}
+function sunIsDown() {
+  if (!condData || !condData.length) return false;
+  const i = Math.min(fcstIdx, FCST_HOURS - 1);
+  return condData.every(d => !d.sun || d.sun[i] == null || d.sun[i] <= 20);
+}
+function nextPeak() {
+  if (!condData || !condData.length) return null;
   const sun = condData[Math.floor(condData.length / 2)].sun;
-  if (!sun || sun[fcstIdx] > 30) return;
-  let best = fcstIdx, bv = -1;
-  for (let i = fcstIdx; i < Math.min(fcstIdx + 24, FCST_HOURS); i++)
-    if (sun[i] != null && sun[i] > bv) { bv = sun[i]; best = i; }
-  if (bv > 30) { fcstIdx = best; fcstJumped = true; timeCtl.refresh(); }
+  if (!sun) return null;
+  let best = -1, bv = 30;
+  for (let i = fcstIdx; i < FCST_HOURS; i++) if (sun[i] != null && sun[i] > bv) { bv = sun[i]; best = i; }
+  return best < 0 ? null : best;
 }
 
 conditions.on('add', fetchConditions);
@@ -2493,12 +2510,11 @@ timeCtl.onAdd = () => {
   L.DomEvent.disableScrollPropagation(d);
   setTimeout(() => {
     d.querySelector('#t-slider').addEventListener('input', e => {
-      fcstIdx = +e.target.value; fcstJumped = false; drawConditions(); timeCtl.refresh();
+      fcstIdx = +e.target.value; drawConditions(); timeCtl.refresh();
     });
     d.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', ev => {
       L.DomEvent.stop(ev);
       condMode = b.dataset.m;
-      fcstJumped = false;   // the jump explains the sun layer only
       timeCtl.refresh();
       fetchConditions();   // the combined view uses a coarser grid, so the points change with the mode
     }));
@@ -2508,7 +2524,7 @@ timeCtl.onAdd = () => {
 timeCtl.refresh = () => {
   const lab = document.getElementById('t-label'), when = document.getElementById('t-when');
   if (!lab) return;
-  lab.textContent = fcstJumped ? 'not now —' : fcstIdx === 0 ? 'now' : '+' + fcstIdx + ' h';
+  lab.textContent = fcstIdx === 0 ? 'now' : '+' + fcstIdx + ' h';
   const sl = document.getElementById('t-slider');
   if (sl && +sl.value !== fcstIdx) sl.value = fcstIdx;
   const sum = document.getElementById('t-sum');
@@ -2520,7 +2536,7 @@ timeCtl.refresh = () => {
     ? 'every sea cell: wind, swell, sun, temperature · tap anywhere for the full readout'
     : condMode === 'wind' ? 'knots, arrow flies with the wind'
     : condMode === 'waves' ? 'metres and period, arrow with the swell'
-    : fcstJumped ? 'watts per square metre — dark right now, so the clock is at the next daylight peak'
+    : sunIsDown() ? sunDownHint()
     : 'watts per square metre';
   document.querySelectorAll('.modes button').forEach(b =>
     b.classList.toggle('on', b.dataset.m === condMode));
