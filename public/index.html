@@ -1670,6 +1670,17 @@ const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
 const sst = gibs('GHRSST_L4_MUR_Sea_Surface_Temperature', 7, 'png', 'default', { opacity: 0.72, maxZoom: 9 });
 const trueColor = gibs('VIIRS_NOAA20_CorrectedReflectance_TrueColor', 9, 'jpg', yesterday, { opacity: 0.9, maxZoom: 11 });
 
+/* Four more NASA products. Each publishes on its own lag — asking for today gives 404s — and each
+   stops at its own matrix level, past which the server answers 400 rather than an enlarged tile. */
+const chloro = gibs('VIIRS_NOAA20_Chlorophyll_a', 7, 'png', daysBack(2), { opacity: 0.65, maxZoom: 9 });
+const seaIce = gibs('GHRSST_L4_GAMSSA_GDS2_Sea_Ice_Concentration', 6, 'png', daysBack(1), { opacity: 0.55, maxZoom: 8 });
+const dust = gibs('MODIS_Terra_Aerosol', 6, 'png', daysBack(1), { opacity: 0.6, maxZoom: 8 });
+// at-sensor radiance keeps the transient lights, which is how fishing fleets show up at all;
+// it is an opaque black raster, so it is blended rather than laid flat over the chart
+const nightLights = gibs('VIIRS_SNPP_DayNightBand_At_Sensor_Radiance', 8, 'png', daysBack(1),
+  { opacity: 0.7, maxZoom: 10, className: 'gibs-screen' });
+
+
 /* ---------- Tropical cyclones: NOAA advisories, hosted by Esri with open CORS ----------
    The NHC's own CurrentStorms.json sends no CORS header, so the Living Atlas copy is used. */
 const TC_URL = 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/Active_Hurricanes_v1/FeatureServer/';
@@ -2536,16 +2547,6 @@ function onZoom() {
 }
 /* Leaflet simply stops drawing a layer past its maxZoom, which looks like a broken toggle unless
    the page says what happened. */
-/* Four more NASA products. Each publishes on its own lag — asking for today gives 404s — and each
-   stops at its own matrix level, past which the server answers 400 rather than an enlarged tile. */
-const chloro = gibs('VIIRS_NOAA20_Chlorophyll_a', 7, 'png', daysBack(2), { opacity: 0.65, maxZoom: 9 });
-const seaIce = gibs('GHRSST_L4_GAMSSA_GDS2_Sea_Ice_Concentration', 6, 'png', daysBack(1), { opacity: 0.55, maxZoom: 8 });
-const dust = gibs('MODIS_Terra_Aerosol', 6, 'png', daysBack(1), { opacity: 0.6, maxZoom: 8 });
-// at-sensor radiance keeps the transient lights, which is how fishing fleets show up at all;
-// it is an opaque black raster, so it is blended rather than laid flat over the chart
-const nightLights = gibs('VIIRS_SNPP_DayNightBand_At_Sensor_Radiance', 8, 'png', daysBack(1),
-  { opacity: 0.7, maxZoom: 10, className: 'gibs-screen' });
-
 const COARSE = [[sst, 9, 'Sea surface temperature'], [trueColor, 11, 'Satellite imagery'], [radar, 10, 'Rain radar'],
   [chloro, 9, 'Chlorophyll'], [seaIce, 8, 'Sea ice'], [dust, 8, 'Dust and aerosol'], [nightLights, 10, 'Night lights']];
 function coarseNote() {
