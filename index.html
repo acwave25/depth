@@ -957,12 +957,11 @@ map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); c
 /* ---------- Chart quilt: one toggle, the right national service picked by where you are ----------
    Each source declares the water it covers. Only sources overlapping the view are attached, so
    panning to Japan does not keep Norway's server busy, and the layer menu stays one line. */
-const CHART_SOURCES = [
-  { id: 'br', label: 'Brazil — DHN', layer: dhn,      bounds: [[-35.5, -70.0], [6.0, -25.0]] },
-  { id: 'us', label: 'USA — NOAA ENC', layer: noaa,   bounds: [[14.0, -180.0], [72.0, -60.0]] },
-  { id: 'es', label: 'Spain — IHM', layer: spain,     bounds: [[27.0, -19.0], [44.5, 5.5]] },
-  { id: 'pt', label: 'Portugal · Madeira · Açores · Cabo Verde · Angola — IH', layer: portugal,
-    bounds: [[-18.5, -32.0], [43.0, -6.0]] },
+const CHART_SOURCES = [   // areas: one or more [[S,W],[N,E]] boxes of water the service actually charts
+  { id: 'br', label: 'Brazil — DHN', layer: dhn, areas: [[[-35.5, -70.0], [6.0, -25.0]]] },
+  { id: 'us', label: 'USA — NOAA ENC', layer: noaa, areas: [[[14.0, -130.0], [50.0, -60.0]], [[50.0, -180.0], [72.0, -125.0]], [[17.5, -68.0], [19.0, -64.0]]] },
+  { id: 'es', label: 'Spain — IHM', layer: spain, areas: [[[35.0, -10.5], [44.5, 4.5]], [[27.0, -19.0], [29.5, -13.0]]] },
+  { id: 'pt', label: 'Portugal — IH', layer: portugal, areas: [[[36.5, -10.5], [42.5, -6.0]], [[36.5, -31.5], [40.0, -24.5]], [[32.3, -17.5], [33.2, -16.2]], [[14.5, -25.5], [17.3, -22.5]], [[-18.5, 11.0], [-5.0, 14.0]]] },
 ];
 const CHARTS_MIN_Z = 6;
 const charts = L.layerGroup();
@@ -973,7 +972,7 @@ function updateCharts() {
   const want = new Set();
   if (chartsOn && z >= CHARTS_MIN_Z) {
     for (const src of CHART_SOURCES) {
-      if (view.intersects(L.latLngBounds(src.bounds))) want.add(src.id);
+      if (src.areas.some(a => view.intersects(L.latLngBounds(a)))) want.add(src.id);
     }
   }
   for (const src of CHART_SOURCES) {
