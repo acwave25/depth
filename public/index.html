@@ -698,8 +698,20 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   justify-content:space-between; gap:1rem; flex-wrap:wrap; }
 .src { font-size:11px; opacity:0.45; font-family:var(--font-mono); }
 .leaflet-container { font-family:'Outfit',sans-serif; }
-.leaflet-control-layers { border-radius:10px !important; border:1px solid rgba(15,46,61,0.15) !important; box-shadow:none !important; }
-.leaflet-control-layers label { font-size:12.5px; }
+.lyr-ctl { border-radius:10px !important; border:1px solid rgba(15,46,61,0.15) !important; box-shadow:none !important; background:#fff; }
+.lyr-ctl .lyr-toggle { display:block; width:36px; height:36px; }
+.lyr-ctl .lyr-panel { display:none; padding:6px 10px 8px; min-width:250px; max-width:min(320px, 90vw); }
+.lyr-ctl.open .lyr-panel { display:block; }
+.lyr-ctl.open .lyr-toggle { display:none; }
+.lyr-tabs { display:flex; flex-wrap:wrap; gap:4px; padding-bottom:6px; margin-bottom:6px; border-bottom:1px solid rgba(15,46,61,0.12); }
+.lyr-tab { font:500 11px/1 'Outfit',sans-serif; letter-spacing:.03em; padding:6px 9px; border-radius:999px; border:1px solid rgba(15,46,61,0.2);
+  background:#fff; color:var(--color-navy); cursor:pointer; position:relative; }
+.lyr-tab.on { background:var(--color-navy); color:#fff; border-color:var(--color-navy); }
+.lyr-tab.has::after { content:''; position:absolute; top:-2px; right:-2px; width:7px; height:7px; border-radius:50%; background:var(--color-yellow); border:1px solid var(--color-navy); }
+.lyr-list { display:none; }
+.lyr-list.on { display:block; }
+.lyr-list label { display:flex; align-items:center; gap:6px; font-size:12.5px; line-height:1.3; padding:3px 0; cursor:pointer; }
+.lyr-list input { margin:0; flex:none; }
 .leaflet-bar a { color:var(--color-navy) !important; }
 .city-dot { width:10px; height:10px; background:var(--color-yellow);
   border:1.5px solid var(--color-navy); border-radius:50%; }
@@ -707,7 +719,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   white-space:nowrap; transform:translate(-50%,-50%); text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff; }
 .ctr-label { font-family:'Outfit',sans-serif; font-size:10px; color:#1f5f8b; white-space:nowrap;
   transform:translate(-50%,-50%); background:rgba(255,255,255,0.85); padding:0 3px; border-radius:3px; }
-.leaflet-control-layers-toggle, .leaflet-retina .leaflet-control-layers-toggle {
+.lyr-ctl .lyr-toggle {
   /* Leaflet's layers icon is an external PNG that is not shipped with this single-file page */
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f2e3d' stroke-width='2' stroke-linejoin='round'><path d='M12 3 2 8l10 5 10-5-10-5z'/><path d='m2 12 10 5 10-5'/><path d='m2 16 10 5 10-5'/></svg>") !important;
   background-size:22px 22px !important; background-repeat:no-repeat; background-position:center; width:36px; height:36px; }
@@ -811,7 +823,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
   footer .src:last-child { display:none; }
   .src { font-size:10px; }
   .meas-panel { width:200px; font-size:11.5px; }
-  .leaflet-control-layers-expanded { max-height:56vh; overflow-y:auto; }
+  .lyr-ctl .lyr-panel { max-height:56vh; overflow-y:auto; }
 }
 .leaflet-tooltip.city-tip { font-family:'Outfit',sans-serif; font-weight:500; font-size:11px;
   color:var(--color-navy); background:rgba(250,247,242,0.92); border:1px solid rgba(15,46,61,0.2);
@@ -901,7 +913,7 @@ gpsCtl.onAdd = () => {
   return d;
 };
 let gpsWatch = null, gpsMarker = null, gpsRing = null;
-function toggleGps() {
+function toggleGps(auto) {
   const btn = document.querySelector('.gps-ctl');
   if (gpsWatch !== null) {
     navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null;
@@ -923,7 +935,7 @@ function toggleGps() {
       map.setView(ll, sc ? Math.min(Math.max(map.getZoom(), 12), sc.z) : Math.max(map.getZoom(), 14));
       first = false;
     }
-  }, err => { readout.textContent = 'GPS: ' + err.message; btn.classList.remove('on'); gpsWatch = null; },
+  }, err => { if (!auto) readout.textContent = 'GPS: ' + err.message; btn.classList.remove('on'); gpsWatch = null; },
   { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
 }
 
@@ -2652,14 +2664,54 @@ gpsCtl.addTo(map);
 rulerCtl.addTo(map);
 fsCtl.addTo(map);
 if (typeof LAND_POINTS !== 'undefined') extCtl.addTo(map);
-L.control.layers(
-  { 'Plain (CARTO)': plain, 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official nautical charts': charts, 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
-   'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
-   'Shipping chokepoints (IMF)': chokepoints, 'Tide gauges, measured (NOAA)': tides, 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
-   'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Dust and aerosol (NASA)': dust, 'Night lights, fishing fleets (NASA)': nightLights, 'Depth, Europe (EMODnet)': emodnet, 'Depth, Ireland 10 m (INFOMAR)': infomar, 'Depth, Belgium 10 m (MDK)': belgium, 'Wind farms (EMODnet)': windFarms, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms, 'Wrecks, worldwide (UKHO)': wrecks, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
-  { collapsed: true }   // tap the layers icon to open
-).addTo(map);
+/* Layers, grouped by theme. Leaflet's stock control is one flat list, which stopped being
+   readable at thirty entries; this one puts a row of theme buttons over the list. */
+const LAYER_GROUPS = [
+  ['Base', 'radio', { 'Plain (Esri)': plain, 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco }],
+  ['Charts', 'check', { 'Official nautical charts': charts, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef,
+    'Depth, Europe (EMODnet)': emodnet, 'Depth, Ireland 10 m (INFOMAR)': infomar, 'Depth, Belgium 10 m (MDK)': belgium }],
+  ['Weather', 'check', { 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Rain radar (RainViewer)': radar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts }],
+  ['Sea', 'check', { 'Sea surface temperature (NASA)': sst, 'Tide gauges, measured (NOAA)': tides, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Satellite, yesterday (NASA)': trueColor, 'Dust and aerosol (NASA)': dust }],
+  ['Hazards', 'check', { 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn, 'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet, 'Wrecks, worldwide (UKHO)': wrecks }],
+  ['Traffic', 'check', { 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Shipping chokepoints (IMF)': chokepoints, 'Night lights, fishing fleets (NASA)': nightLights }],
+  ['Infrastructure', 'check', { 'Wind farms (EMODnet)': windFarms, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
+];
+const lyrCtl = L.control({ position: 'topright' });
+lyrCtl.onAdd = () => {
+  const d = L.DomUtil.create('div', 'leaflet-bar lyr-ctl');
+  d.innerHTML = '<a class="lyr-toggle" href="#" title="Layers"></a><div class="lyr-panel"><div class="lyr-tabs"></div><div class="lyr-lists"></div></div>';
+  L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+  const tabs = d.querySelector('.lyr-tabs'), lists = d.querySelector('.lyr-lists');
+  LAYER_GROUPS.forEach(([name, kind, layers], i) => {
+    const tab = L.DomUtil.create('button', 'lyr-tab' + (i ? '' : ' on'), tabs);
+    tab.type = 'button'; tab.textContent = name;
+    const list = L.DomUtil.create('div', 'lyr-list' + (i ? '' : ' on'), lists);
+    tab.onclick = () => {
+      d.querySelectorAll('.lyr-tab, .lyr-list').forEach(el => el.classList.remove('on'));
+      tab.classList.add('on'); list.classList.add('on');
+    };
+    const mark = () => tab.classList.toggle('has', kind !== 'radio' && Object.values(layers).some(l => map.hasLayer(l)));
+    for (const [label, layer] of Object.entries(layers)) {
+      const lab = L.DomUtil.create('label', '', list);
+      const inp = L.DomUtil.create('input', '', lab);
+      inp.type = kind === 'radio' ? 'radio' : 'checkbox'; if (kind === 'radio') inp.name = 'lyr-base';
+      inp.checked = map.hasLayer(layer);
+      L.DomUtil.create('span', '', lab).innerHTML = label;
+      inp.onchange = () => {
+        if (kind === 'radio') {
+          for (const l of Object.values(layers)) if (l !== layer && map.hasLayer(l)) map.removeLayer(l);
+          layer.addTo(map); map.fire('baselayerchange', { layer });
+        } else if (inp.checked) layer.addTo(map); else map.removeLayer(layer);
+      };
+      layer.on('add remove', () => { inp.checked = map.hasLayer(layer); mark(); });
+    }
+    mark();
+  });
+  d.querySelector('.lyr-toggle').onclick = e => { e.preventDefault(); d.classList.toggle('open'); };
+  map.on('click', () => d.classList.remove('open'));
+  return d;
+};
+lyrCtl.addTo(map);
 
 const places = [
   ['Recife', -8.05, -34.88], ['Natal', -5.79, -35.21], ['João Pessoa', -7.12, -34.85],
@@ -2710,6 +2762,8 @@ map.on('zoomend', coarseNote);
 for (const c of COARSE) c[0].on('add', coarseNote);
 
 map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); conditions.reload(); }); onZoom();
+// open on the viewer's own position; a refusal leaves the default view without complaint
+if (navigator.geolocation) toggleGps(true);
 
 
 /* ---------- Pointer: tap anywhere for depth, wind, air and sea temperature, and sea state ---------- */
