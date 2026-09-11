@@ -1066,7 +1066,7 @@ const osmDepth = L.tileLayer.wms('https://depth.openseamap.org/geoserver/opensea
 
 /* Weather radar: RainViewer global mosaic, free and keyless. The frame path rotates, so the
    layer asks the index for the newest frame and re-checks every ten minutes. */
-const radar = L.tileLayer('', { opacity: 0.75, maxNativeZoom: 7, maxZoom: 19, attribution: 'RainViewer' });   // above z7 the mosaic serves a 'zoom not supported' graphic, so upsample instead
+const radar = L.tileLayer('', { opacity: 0.75, maxNativeZoom: 7, maxZoom: 10, attribution: 'RainViewer' });   // above z7 the mosaic serves a 'zoom not supported' graphic, so upsample instead
 let radarTimer = null;
 async function refreshRadar() {
   try {
@@ -1558,8 +1558,11 @@ const gibs = (layer, level, ext, date, opts) => L.tileLayer(
   Object.assign({ maxNativeZoom: level, maxZoom: 19, attribution: 'NASA EOSDIS GIBS' }, opts));
 
 const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-const sst = gibs('GHRSST_L4_MUR_Sea_Surface_Temperature', 7, 'png', 'default', { opacity: 0.72 });
-const trueColor = gibs('VIIRS_NOAA20_CorrectedReflectance_TrueColor', 9, 'jpg', yesterday, { opacity: 0.9 });
+/* These two are coarse global products: sea surface temperature is about a kilometre per pixel and
+   the imagery a few hundred metres. Stretching them to harbour zoom turned the whole screen into a
+   smear, so each stops drawing a couple of levels past its real resolution and says why. */
+const sst = gibs('GHRSST_L4_MUR_Sea_Surface_Temperature', 7, 'png', 'default', { opacity: 0.72, maxZoom: 9 });
+const trueColor = gibs('VIIRS_NOAA20_CorrectedReflectance_TrueColor', 9, 'jpg', yesterday, { opacity: 0.9, maxZoom: 11 });
 
 /* ---------- Tropical cyclones: NOAA advisories, hosted by Esri with open CORS ----------
    The NHC's own CurrentStorms.json sends no CORS header, so the Living Atlas copy is used. */
@@ -2267,6 +2270,18 @@ function onZoom() {
   const z = map.getZoom();
   if (z >= 8) { if (!map.hasLayer(placesLayer)) placesLayer.addTo(map); } else map.removeLayer(placesLayer);
 }
+/* Leaflet simply stops drawing a layer past its maxZoom, which looks like a broken toggle unless
+   the page says what happened. */
+const COARSE = [[sst, 9, 'Sea surface temperature'], [trueColor, 11, 'Satellite imagery'], [radar, 10, 'Rain radar']];
+function coarseNote() {
+  const z = map.getZoom();
+  const hidden = COARSE.filter(c => map.hasLayer(c[0]) && z > c[1]);
+  if (hidden.length) chartMsg.textContent = hidden.map(c => c[2]).join(' and ') +
+    ' hidden here: too coarse past zoom ' + Math.min(...hidden.map(c => c[1]));
+}
+map.on('zoomend', coarseNote);
+for (const c of COARSE) c[0].on('add', coarseNote);
+
 map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); conditions.reload(); }); onZoom();
 
 
