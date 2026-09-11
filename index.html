@@ -1283,7 +1283,7 @@ function arrowIcon(deg, color, label, cls) {
     '</svg>' });
 }
 
-function makeFlowLayer({ url, params, read, render, cls, seaOnly }) {
+function makeFlowLayer({ url, params, read, render, cls, seaOnly, onData }) {
   const group = L.layerGroup();
   let data = null, token = 0, timer = null;
 
@@ -1302,6 +1302,7 @@ function makeFlowLayer({ url, params, read, render, cls, seaOnly }) {
       data = j.map((d, i) => ({ ll: pts[i], h: d.hourly, elev: d.elevation }))
         .filter(d => !seaOnly || !(d.elev > 0));   // the marine grid snaps inland points to the nearest sea cell
       fcstTimes = j[0] && j[0].hourly ? j[0].hourly.time : null;
+      if (onData) onData(data);
       draw();
       timeCtl.refresh();
     } catch (e) { if (my === token) { group.clearLayers(); } }
@@ -1362,7 +1363,20 @@ const solar = makeFlowLayer({
   params: 'hourly=shortwave_radiation,cloud_cover',
   read: (h, i) => h && h.shortwave_radiation[i] != null ? { w: h.shortwave_radiation[i], cc: h.cloud_cover[i] } : null,
   render: solarIcon,
-  cls: 'solar-cell'
+  cls: 'solar-cell',
+  /* Turned on at night the whole grid reads 0 W/m2, which looks broken. If no other forecast
+     layer is driving the clock, jump to the next daylight peak instead. */
+  onData: data => {
+    if (!data.length || map.hasLayer(wind) || map.hasLayer(waves)) return;
+    const h = data[Math.floor(data.length / 2)].h;
+    if (!h || !h.shortwave_radiation || h.shortwave_radiation[fcstIdx] > 30) return;
+    let best = fcstIdx, bv = -1;
+    for (let i = fcstIdx; i < Math.min(fcstIdx + 24, FCST_HOURS); i++) {
+      const v = h.shortwave_radiation[i];
+      if (v != null && v > bv) { bv = v; best = i; }
+    }
+    if (bv > 30) { fcstIdx = best; timeCtl.refresh(); }
+  }
 });
 
 /* forecast time slider — appears only while wind, waves or solar is on */
@@ -1383,6 +1397,8 @@ timeCtl.refresh = () => {
   const lab = document.getElementById('t-label'), when = document.getElementById('t-when');
   if (!lab) return;
   lab.textContent = fcstIdx === 0 ? 'now' : '+' + fcstIdx + ' h';
+  const sl = document.getElementById('t-slider');
+  if (sl && +sl.value !== fcstIdx) sl.value = fcstIdx;
   if (fcstTimes && fcstTimes[fcstIdx]) {
     const t = new Date(fcstTimes[fcstIdx] + 'Z');
     when.textContent = t.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
