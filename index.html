@@ -829,7 +829,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1064,10 +1064,19 @@ const sweden = L.tileLayer.wms('https://geokatalog.sjofartsverket.se/mapservice/
 /* Argentina: SHN serves a mosaic of its own nautical charts through GeoWebCache. The cache is TMS,
    whose rows count from the bottom, hence {-y}. Its extent runs over the Río de la Plata and down
    into the Antarctic sector, so Uruguayan approaches come with it. */
-const argentina = L.tileLayer(
-  'https://wms.shn.gob.ar/geoserver/gwc/service/tms/1.0.0/SHN%3AFondoMarino@EPSG%3A900913@png/{z}/{x}/{-y}.png', {
-  minZoom: 6, maxNativeZoom: 18, maxZoom: 19,
-  attribution: 'Servicio de Hidrografía Naval (Argentina)'
+const argentina = L.tileLayer.wms('https://wms.shn.gob.ar/geoserver/wms', {
+  layers: 'SHN:FondoMarino', format: 'image/png', transparent: true, version: '1.3.0',
+  minZoom: 6, maxZoom: 19,   // the tile cache goes flat past z14; GetMap has no scale cap
+  attribution: '© Servicio de Hidrografía Naval (Argentina) — no válido para la navegación'
+});
+
+/* Colombia: DIMAR publishes exactly one chart this way, the Cartagena approaches, as a tile
+   cache. Bounded to that chart so it is never requested for the rest of the coast. */
+const colombia = L.tileLayer(
+  'https://tiles.arcgis.com/tiles/RB7c27NVd25mjSSc/arcgis/rest/services/cartaNautica/MapServer/tile/{z}/{y}/{x}', {
+  minZoom: 11, maxNativeZoom: 17, maxZoom: 19,
+  bounds: L.latLngBounds([10.3472, -75.5775], [10.4267, -75.5058]),
+  attribution: '© Dirección General Marítima (DIMAR), Colombia'
 });
 
 /* Spain: IHM publishes its ENCs as free WMS, one service per scale band (© Instituto Hidrográfico de la Marina, not for navigation) */
@@ -2576,6 +2585,8 @@ const CHART_SOURCES = [   // areas: one or more [[S,W],[N,E]] boxes of water the
     areas: [[[62.5, -28.5], [67.6, -12.0]]] },
   { id: 'se', label: 'Sweden — Sjöfartsverket', layer: sweden,
     areas: [[[54.8, 9.5], [66.2, 24.5]]] },
+  { id: 'co', label: 'Colombia — DIMAR (Cartagena only)', layer: colombia,
+    areas: [[[10.34, -75.58], [10.43, -75.50]]] },
   { id: 'ar', label: 'Argentina — SHN', layer: argentina,
     areas: [[[-58.5, -70.0], [-33.0, -52.0]], [[-78.8, -76.2], [-58.0, -25.0]]] },
   { id: 'pt', label: 'Portugal — IH', layer: portugal, areas: [[[36.5, -10.5], [42.5, -6.0]], [[36.5, -31.5], [40.0, -24.5]], [[32.3, -17.5], [33.2, -16.2]], [[14.5, -25.5], [17.3, -22.5]], [[-18.5, 11.0], [-5.0, 14.0]]] },
