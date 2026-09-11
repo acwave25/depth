@@ -2492,9 +2492,12 @@ function nextPeak() {
   if (!condData || !condData.length) return null;
   const sun = condData[Math.floor(condData.length / 2)].sun;
   if (!sun) return null;
-  let best = -1, bv = 30;
-  for (let i = fcstIdx; i < FCST_HOURS; i++) if (sun[i] != null && sun[i] > bv) { bv = sun[i]; best = i; }
-  return best < 0 ? null : best;
+  // the next peak, not the brightest hour of the week: walk to daylight, then climb until it turns
+  let i = fcstIdx;
+  while (i < FCST_HOURS && !(sun[i] > 30)) i++;
+  if (i >= FCST_HOURS) return null;
+  while (i + 1 < FCST_HOURS && sun[i + 1] != null && sun[i + 1] >= sun[i]) i++;
+  return i;
 }
 
 conditions.on('add', fetchConditions);
