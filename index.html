@@ -707,6 +707,10 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   white-space:nowrap; transform:translate(-50%,-50%); text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff; }
 .ctr-label { font-family:'Outfit',sans-serif; font-size:10px; color:#1f5f8b; white-space:nowrap;
   transform:translate(-50%,-50%); background:rgba(255,255,255,0.85); padding:0 3px; border-radius:3px; }
+.leaflet-control-layers-toggle, .leaflet-retina .leaflet-control-layers-toggle {
+  /* Leaflet's layers icon is an external PNG that is not shipped with this single-file page */
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f2e3d' stroke-width='2' stroke-linejoin='round'><path d='M12 3 2 8l10 5 10-5-10-5z'/><path d='m2 12 10 5 10-5'/><path d='m2 16 10 5 10-5'/></svg>") !important;
+  background-size:22px 22px !important; background-repeat:no-repeat; background-position:center; width:36px; height:36px; }
 .gps-ctl a { font-size:18px; line-height:30px; }
 .gps-ctl.on a { background:#c8102e !important; color:#fff !important; }
 .chart-msg { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); z-index:900;
