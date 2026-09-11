@@ -729,7 +729,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script>/* @preserve
@@ -807,6 +807,17 @@ function toggleGps() {
   }, err => { readout.textContent = 'GPS: ' + err.message; btn.classList.remove('on'); gpsWatch = null; },
   { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
 }
+
+/* US waters: NOAA ENC Online, live-rendered official electronic charts (US coast, Gulf, Puerto Rico, USVI) */
+const NoaaEnc = L.TileLayer.extend({
+  getTileUrl(c) {
+    const R = 20037508.342789244, n = Math.pow(2, c.z);
+    const w = -R + 2 * R * c.x / n, e = -R + 2 * R * (c.x + 1) / n, nn = R - 2 * R * c.y / n, s = R - 2 * R * (c.y + 1) / n;
+    return 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/MapServer/export' +
+      '?bbox=' + [w, s, e, nn].join(',') + '&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image';
+  }
+});
+const noaa = new NoaaEnc('', { minZoom: 6, maxZoom: 19, opacity: 0.95, attribution: 'NOAA ENC' });
 
 const seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
   attribution: 'OpenSeaMap', maxZoom: 18, maxNativeZoom: 18
@@ -928,11 +939,12 @@ map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); c
 
 sat.addTo(map);    // full coverage at every zoom; GMRT WMS renders on demand (7–9 s per tile) so it is optional
 dhn.addTo(map);
+noaa.addTo(map);
 gpsCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official charts (DHN, whole coast)': dhn, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
-  { collapsed: false }
+  { 'Official charts (DHN, Brazil)': dhn, 'US charts (NOAA ENC, live)': noaa, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+  { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
 
 const places = [
