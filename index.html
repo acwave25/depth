@@ -2269,6 +2269,16 @@ function updateCharts() {
     if (want.has('br')) t += chartFocusNote();
     chartMsg.textContent = t;
   }
+  limitZoom(chartsOn && want.has('br'));
+}
+
+/* Zooming past the survey only enlarges pixels, so stop the map there rather than let the chart
+   dissolve. One level of enlargement is still readable; beyond that the + button goes dead.
+   Turning the charts off lifts the limit, because the satellite base is sharp to zoom 19. */
+function limitZoom(brazil) {
+  const c = map.getCenter(), sc = brazil ? dhnScale(c.lat, c.lng) : null;
+  const lim = sc ? Math.min(19, sc.z + 1) : 19;
+  if (map.getMaxZoom() !== lim) map.setMaxZoom(lim);
 }
 charts.on('add', () => { chartsOn = true; updateCharts(); });
 charts.on('remove', () => { chartsOn = false; for (const s of CHART_SOURCES) charts.removeLayer(s.layer); chartMsg.textContent = ''; });
@@ -2326,8 +2336,7 @@ function chartFocusNote() {
   if (!sc) return '';
   const over = map.getZoom() - sc.z;
   if (over <= 0) return ' — survey here is ' + sc.px + ' m per pixel, sharp to zoom ' + sc.z;
-  return ' — finest survey here is ' + sc.px + ' m per pixel (zoom ' + sc.z + '), enlarged ' +
-    Math.pow(2, over) + '×; no sharper chart is published';
+  return ' — survey here is ' + sc.px + ' m per pixel; this is as close as it stays readable';
 }
 function onZoom() {
   const z = map.getZoom();
