@@ -829,6 +829,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
+<script src="dhn-sheets.js"></script>
 <script>/* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
  * (c) 2010-2023 Vladimir Agafonkin, (c) 2010-2011 CloudMade
@@ -912,7 +913,12 @@ function toggleGps() {
       gpsRing = L.circle(ll, { radius: acc, color: '#c8102e', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
       gpsMarker = L.circleMarker(ll, { radius: 7, color: '#fff', weight: 2, fillColor: '#c8102e', fillOpacity: 1, interactive: false }).addTo(map);
     } else { gpsRing.setLatLng(ll).setRadius(acc); gpsMarker.setLatLng(ll); }
-    if (first) { map.setView(ll, Math.max(map.getZoom(), 14)); first = false; }
+    if (first) {
+      // landing at zoom 18 over a 26 m-per-pixel sheet just shows enlarged pixels
+      const sc = dhnScale(ll[0], ll[1]);
+      map.setView(ll, sc ? Math.min(Math.max(map.getZoom(), 14), sc.z + 1) : Math.max(map.getZoom(), 14));
+      first = false;
+    }
   }, err => { readout.textContent = 'GPS: ' + err.message; btn.classList.remove('on'); gpsWatch = null; },
   { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 });
 }
@@ -2260,7 +2266,7 @@ function updateCharts() {
   else if (!want.size) chartMsg.textContent = 'no free official charts published for these waters';
   else {
     let t = CHART_SOURCES.filter(s => want.has(s.id)).map(s => s.label).join(' · ');
-    if (z > 14) t += ' — enlarged past zoom 14 outside harbours; blank ground is uncharted';
+    if (want.has('br')) t += chartFocusNote();
     chartMsg.textContent = t;
   }
 }
@@ -2301,6 +2307,27 @@ for (const [n, la, lo] of places) {
   L.marker([la, lo], { icon: L.divIcon({ className:'city-dot', iconSize:[10,10] }) })
     .addTo(placesLayer)
     .bindTooltip(n, { permanent: true, direction: 'right', offset: [7,0], className:'city-tip' });
+}
+/* The Navy sheets are surveyed at very different scales — 1.3 m per pixel in Recife harbour,
+   86 m per pixel on the open-coast sheet north of it. Past a sheet's own scale the page is only
+   enlarging pixels, so say which it is instead of letting a blurred chart look like a broken one. */
+function dhnScale(lat, lng) {
+  if (typeof DHN_SHEETS === 'undefined') return null;
+  let best = null;
+  for (const sh of DHN_SHEETS) {
+    if (lat < sh[0] || lat > sh[2] || lng < sh[1] || lng > sh[3]) continue;
+    if (!best || sh[4] > best[4]) best = sh;
+    if (best[4] >= 17) break;          // sorted finest first, nothing can beat 17
+  }
+  return best ? { z: best[4], px: best[5] } : null;
+}
+function chartFocusNote() {
+  const c = map.getCenter(), sc = dhnScale(c.lat, c.lng);
+  if (!sc) return '';
+  const over = map.getZoom() - sc.z;
+  if (over <= 0) return ' — ' + sc.px + ' m per pixel, full detail';
+  return ' — finest survey here is ' + sc.px + ' m per pixel (zoom ' + sc.z + '), enlarged ' +
+    Math.pow(2, over) + '×; no sharper chart is published';
 }
 function onZoom() {
   const z = map.getZoom();

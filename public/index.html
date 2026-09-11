@@ -2044,11 +2044,19 @@ function condIcon(d) {
 
   /* Combined view: a small card of plain numbers. Symbols looked tidy and told you nothing you
      could read at a glance, which was the whole complaint about the old stacked layers. */
-  if (!w && !v && s == null) return null;
+  const air = d.air && d.air[i] != null ? d.air[i] : null;
+  const sst = d.sst && d.sst[i] != null ? d.sst[i] : null;
+  if (!w && !v && s == null && air == null) return null;
   const lines = [];
-  if (w) lines.push('<b>' + Math.round(w.kn) + ' kn</b> ' + compass(w.deg));
-  if (v) lines.push(v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg));
-  if (s != null && s > 20) lines.push(Math.round(s) + ' W/m²');
+  // "all" means all of it: a line that vanishes at night reads as missing data, not as darkness
+  lines.push(w ? '<b>' + Math.round(w.kn) + ' kn</b> ' + compass(w.deg) : 'wind —');
+  lines.push(v ? v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg)
+               : (d.elev > 0 ? 'inland' : 'swell —'));
+  lines.push(s == null ? 'sun —' : s > 1 ? Math.round(s) + ' W/m²' : 'dark');
+  if (air != null || sst != null)
+    lines.push((air != null ? Math.round(air) + '° air' : '') +
+               (air != null && sst != null ? ' · ' : '') +
+               (sst != null ? Math.round(sst) + '° sea' : ''));
   return L.divIcon({ className: 'cond-card', iconSize: null,
     html: '<div class="cc" style="border-left-color:' + (w ? windColor(w.kn) : '#7f8c8d') + '">' +
       lines.join('<br>') + '</div>' });
@@ -2093,17 +2101,17 @@ const COMPASS_WORD = ['north', 'north-east', 'east', 'south-east', 'south', 'sou
 const compassWord = d => d == null ? '' : COMPASS_WORD[Math.round(((d % 360) + 360) % 360 / 45) % 8];
 
 async function fetchConditions() {
-  const pts = gridPoints(map, condMode === 'all' ? 5 : 7, condMode === 'all' ? 200 : 150);
+  const pts = gridPoints(map, condMode === 'all' ? 4 : 7, condMode === 'all' ? 240 : 150);
   const my = ++condToken;
   const lat = pts.map(p => p[0].toFixed(3)).join(','), lon = pts.map(p => p[1].toFixed(3)).join(',');
   const tail = '&forecast_days=3&timeformat=iso8601';
   try {
     const [air, sea] = await Promise.all([
       fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
-        '&hourly=wind_speed_10m,wind_direction_10m,shortwave_radiation&wind_speed_unit=kn' + tail)
+        '&hourly=wind_speed_10m,wind_direction_10m,shortwave_radiation,temperature_2m&wind_speed_unit=kn' + tail)
         .then(r => r.ok ? r.json() : Promise.reject(r.status)),
       fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + lat + '&longitude=' + lon +
-        '&hourly=wave_height,wave_direction,wave_period' + tail)
+        '&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature' + tail)
         .then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
     if (my !== condToken) return;
@@ -2115,6 +2123,8 @@ async function fetchConditions() {
         ll: pts[k], elev: a.elevation,
         wind: h ? { speed: h.wind_speed_10m, dir: h.wind_direction_10m } : null,
         sun: h ? h.shortwave_radiation : null,
+        air: h ? h.temperature_2m : null,
+        sst: m ? m.sea_surface_temperature : null,
         wave: m ? { h: m.wave_height, dir: m.wave_direction, t: m.wave_period } : null
       };
     });
