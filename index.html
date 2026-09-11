@@ -870,7 +870,7 @@ const osmDepth = L.tileLayer.wms('https://depth.openseamap.org/geoserver/opensea
 
 /* Weather radar: RainViewer global mosaic, free and keyless. The frame path rotates, so the
    layer asks the index for the newest frame and re-checks every ten minutes. */
-const radar = L.tileLayer('', { opacity: 0.75, maxZoom: 12, attribution: 'RainViewer' });
+const radar = L.tileLayer('', { opacity: 0.75, maxNativeZoom: 7, maxZoom: 19, attribution: 'RainViewer' });   // above z7 the mosaic serves a 'zoom not supported' graphic, so upsample instead
 let radarTimer = null;
 async function refreshRadar() {
   try {
@@ -1033,7 +1033,7 @@ function arrowIcon(deg, color, label, cls) {
     '</svg>' });
 }
 
-function makeFlowLayer({ url, params, read, render, cls }) {
+function makeFlowLayer({ url, params, read, render, cls, seaOnly }) {
   const group = L.layerGroup();
   let data = null, token = 0, timer = null;
 
@@ -1049,7 +1049,8 @@ function makeFlowLayer({ url, params, read, render, cls }) {
       let j = await r.json();
       if (!Array.isArray(j)) j = [j];
       if (my !== token) return;
-      data = j.map((d, i) => ({ ll: pts[i], h: d.hourly }));
+      data = j.map((d, i) => ({ ll: pts[i], h: d.hourly, elev: d.elevation }))
+        .filter(d => !seaOnly || !(d.elev > 0));   // the marine grid snaps inland points to the nearest sea cell
       fcstTimes = j[0] && j[0].hourly ? j[0].hourly.time : null;
       draw();
       timeCtl.refresh();
@@ -1086,7 +1087,7 @@ const waves = makeFlowLayer({
   params: 'hourly=wave_height,wave_direction,wave_period',
   read: (h, i) => h && h.wave_height[i] != null ? { m: h.wave_height[i], deg: h.wave_direction[i], t: h.wave_period[i] } : null,
   render: (v, cls) => arrowIcon(v.deg, windColor(v.m * 6), v.m.toFixed(1) + ' m' + (v.t ? ' / ' + Math.round(v.t) + 's' : ''), cls),
-  cls: 'wave-arrow'
+  cls: 'wave-arrow', seaOnly: true
 });
 
 /* forecast time slider — appears only while wind or waves is on */
