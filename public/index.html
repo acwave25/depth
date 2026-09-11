@@ -916,7 +916,7 @@ function toggleGps() {
     if (first) {
       // landing at zoom 18 over a 26 m-per-pixel sheet just shows enlarged pixels
       const sc = dhnScale(ll[0], ll[1]);
-      map.setView(ll, sc ? Math.min(Math.max(map.getZoom(), 14), sc.z + 1) : Math.max(map.getZoom(), 14));
+      map.setView(ll, sc ? Math.min(Math.max(map.getZoom(), 12), sc.z) : Math.max(map.getZoom(), 14));
       first = false;
     }
   }, err => { readout.textContent = 'GPS: ' + err.message; btn.classList.remove('on'); gpsWatch = null; },
@@ -2283,7 +2283,10 @@ function updateCharts() {
    Turning the charts off lifts the limit, because the satellite base is sharp to zoom 19. */
 function limitZoom(brazil) {
   const c = map.getCenter(), sc = brazil ? dhnScale(c.lat, c.lng) : null;
-  const lim = sc ? Math.min(19, sc.z + 1) : 19;
+  // on a retina screen each chart pixel is already spread over four device pixels, so the one
+  // level of slack that looks fine on a desktop reads as mush on a phone
+  const slack = (window.devicePixelRatio || 1) >= 2 ? 0 : 1;
+  const lim = sc ? Math.min(19, sc.z + slack) : 19;
   if (map.getMaxZoom() !== lim) map.setMaxZoom(lim);
 }
 charts.on('add', () => { chartsOn = true; updateCharts(); });
