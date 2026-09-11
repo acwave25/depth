@@ -1095,16 +1095,27 @@ function profileSvg(pr) {
   const known = depths.filter(d => d != null);
   if (!known.length) return '<div class="sub">no depth data along this line</div>';
   const max = Math.max(...known, 1);
-  let d = '', started = false;
+  // square-root depth axis: a 3 m shoal and a 400 m basin both stay readable on one 54 px strip
+  const yOf = dep => 2 + (h - 4) * Math.sqrt(dep / max);
+  let line = '', area = '', started = false;
   depths.forEach((dep, i) => {
     const x = w * i / (depths.length - 1);
     if (dep == null) { started = false; return; }
-    const y = 2 + (h - 4) * (dep / max);
-    d += (started ? 'L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1); started = true;
+    const y = yOf(dep);
+    if (!started) { area += 'M' + x.toFixed(1) + ',' + h + 'L' + x.toFixed(1) + ',' + y.toFixed(1); }
+    else { area += 'L' + x.toFixed(1) + ',' + y.toFixed(1); }
+    line += (started ? 'L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1);
+    started = true;
   });
+  area += 'L' + w + ',' + h + 'Z';
+  const ticks = [5, 20, 50, 200].filter(t => t < max).map(t =>
+    '<line x1="0" y1="' + yOf(t).toFixed(1) + '" x2="' + w + '" y2="' + yOf(t).toFixed(1) +
+    '" stroke="#1f5f8b" stroke-width="0.5" opacity="0.3"/>' +
+    '<text x="' + (w - 2) + '" y="' + (yOf(t) - 1.5).toFixed(1) + '" font-size="8" text-anchor="end" fill="#0f2e3d" opacity="0.55">' + t + '</text>').join('');
   return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
     '<rect x="0" y="0" width="' + w + '" height="' + h + '" fill="rgba(70,140,200,0.10)"/>' +
-    '<path d="' + d + '" fill="none" stroke="#1f5f8b" stroke-width="1.6"/>' +
+    '<path d="' + area + '" fill="rgba(70,140,200,0.28)"/>' + ticks +
+    '<path d="' + line + '" fill="none" stroke="#1f5f8b" stroke-width="1.6"/>' +
     '<text x="2" y="10" font-size="9" fill="#0f2e3d" opacity="0.7">0 m</text>' +
     '<text x="2" y="' + (h - 3) + '" font-size="9" fill="#0f2e3d" opacity="0.7">' + Math.round(max) + ' m</text></svg>';
 }
