@@ -1514,6 +1514,85 @@ async function refreshShips() {
 ships.on('add', () => { refreshShips(); aisTimer = setInterval(refreshShips, 20000); });
 ships.on('remove', () => { clearInterval(aisTimer); ships.clearLayers(); });
 
+/* ---------- Worldwide live AIS: aisstream.io, a free keyed WebSocket ----------
+   Terrestrial receivers, so coverage is good within VHF range of a coast and thin offshore.
+   The key sits in the page like the LINZ one; rotate it at aisstream.io if it is abused. */
+const AISSTREAM_KEY = 'dd0bcfcf9eb83dd4090a23edc079cb3d0da09afa';
+const AIS_MIN_Z = 7;                 // the whole world at once is a million messages a minute
+const AIS_STALE = 15 * 60 * 1000;    // a ship unheard for this long is dropped, not left adrift
+const live = L.layerGroup();
+let aisSock = null, aisSeen = new Map(), aisDrawTimer = null, aisSubTimer = null, aisNote = '';
+
+function aisBox() {
+  const b = map.getBounds().pad(0.2);
+  return [[[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]];
+}
+function aisSubscribe() {
+  if (!aisSock || aisSock.readyState !== 1) return;
+  if (map.getZoom() < AIS_MIN_Z) { aisNote = 'zoom in for live ship traffic'; return; }
+  aisSock.send(JSON.stringify({ APIKey: AISSTREAM_KEY, BoundingBoxes: aisBox(),
+    FilterMessageTypes: ['PositionReport', 'ShipStaticData'] }));
+  aisNote = 'listening for ships…';
+}
+function aisOpen() {
+  aisSock = new WebSocket('wss://stream.aisstream.io/v0/stream');
+  aisSock.onopen = aisSubscribe;
+  aisSock.onmessage = ev => {
+    let j; try { j = JSON.parse(ev.data); } catch (e) { return; }
+    if (j.error) { aisNote = 'AIS: ' + j.error; return; }
+    const md = j.MetaData || {}, mmsi = md.MMSI || md.MMSI_String;
+    if (!mmsi) return;
+    const v = aisSeen.get(mmsi) || { mmsi, name: '', type: 0, dest: '' };
+    v.ts = Date.now();
+    if (md.ShipName && md.ShipName.trim()) v.name = md.ShipName.trim();
+    const pr = j.Message && j.Message.PositionReport;
+    if (pr) {
+      v.lat = pr.Latitude; v.lon = pr.Longitude;
+      v.sog = pr.Sog; v.cog = pr.Cog;
+      v.hdg = pr.TrueHeading != null && pr.TrueHeading < 360 ? pr.TrueHeading : pr.Cog;
+    }
+    const sd = j.Message && j.Message.ShipStaticData;
+    if (sd) {
+      if (sd.Type != null) v.type = sd.Type;
+      if (sd.Destination) v.dest = sd.Destination.trim();
+    }
+    if (v.lat != null) aisSeen.set(mmsi, v);
+  };
+  aisSock.onclose = () => { if (map.hasLayer(live)) setTimeout(aisOpen, 4000); };   // the stream drops now and then
+  aisSock.onerror = () => { aisNote = 'AIS stream unavailable'; };
+}
+function aisDraw() {
+  if (!map.hasLayer(live)) return;
+  const cut = Date.now() - AIS_STALE, view = map.getBounds().pad(0.1);
+  live.clearLayers();
+  let drawn = 0;
+  for (const [mmsi, v] of aisSeen) {
+    if (v.ts < cut) { aisSeen.delete(mmsi); continue; }
+    if (!view.contains([v.lat, v.lon]) || ++drawn > 900) continue;
+    const age = Math.round((Date.now() - v.ts) / 60000);
+    live.addLayer(L.marker([v.lat, v.lon], { icon: shipIcon(v.type, v.hdg), keyboard: false })
+      .bindPopup('<b>' + (v.name || ('MMSI ' + mmsi)) + '</b><br>' + SHIP_TYPE(v.type)[1] + '<br>' +
+        (v.sog != null ? v.sog.toFixed(1) + ' kn' : '') +
+        (v.cog != null ? ' · course ' + Math.round(v.cog) + '°' : '') +
+        (v.dest ? '<br>to ' + v.dest : '') +
+        '<br><small>aisstream.io · ' + (age ? age + ' min ago' : 'just now') + '</small>'));
+  }
+  if (map.getZoom() >= AIS_MIN_Z)
+    chartMsg.textContent = drawn ? drawn + ' ships heard in view' : aisNote || 'no ships heard here yet';
+  else chartMsg.textContent = 'zoom in for live ship traffic';
+}
+live.on('add', () => { aisOpen(); aisDrawTimer = setInterval(aisDraw, 2000); });
+live.on('remove', () => {
+  clearInterval(aisDrawTimer); clearTimeout(aisSubTimer);
+  if (aisSock) { aisSock.onclose = null; aisSock.close(); aisSock = null; }
+  aisSeen.clear(); live.clearLayers();
+});
+map.on('moveend', () => {
+  if (!map.hasLayer(live)) return;
+  clearTimeout(aisSubTimer);
+  aisSubTimer = setTimeout(aisSubscribe, 1200);   // the server accepts a fresh box on the open socket
+});
+
 /* ---------- Marine warnings: NWS is the only free feed that is both open and CORS-readable ----------
    Marine alerts carry no geometry, only zone codes, so each zone outline is fetched once and kept. */
 const ALERT_EVENTS = ['Gale Warning', 'Storm Warning', 'Hurricane Force Wind Warning',
@@ -2311,7 +2390,7 @@ L.control.layers(
   { 'Plain (CARTO)': plain, 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
   { 'Official nautical charts': charts, 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
    'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
-   'Shipping chokepoints (IMF)': chokepoints, 'Ship traffic (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
+   'Shipping chokepoints (IMF)': chokepoints, 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
    'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);

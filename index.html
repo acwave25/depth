@@ -1536,9 +1536,11 @@ function aisSubscribe() {
 }
 function aisOpen() {
   aisSock = new WebSocket('wss://stream.aisstream.io/v0/stream');
+  aisSock.binaryType = 'arraybuffer';   // the stream sends binary frames, not text
   aisSock.onopen = aisSubscribe;
   aisSock.onmessage = ev => {
-    let j; try { j = JSON.parse(ev.data); } catch (e) { return; }
+    const text = typeof ev.data === 'string' ? ev.data : new TextDecoder().decode(ev.data);
+    let j; try { j = JSON.parse(text); } catch (e) { return; }
     if (j.error) { aisNote = 'AIS: ' + j.error; return; }
     const md = j.MetaData || {}, mmsi = md.MMSI || md.MMSI_String;
     if (!mmsi) return;
