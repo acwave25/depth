@@ -1244,13 +1244,13 @@ function queueProfile() {
   profTimer = setTimeout(sampleProfile, 450);
 }
 
-function seedMeasure() {
-  const b = map.getBounds(), c = map.getCenter();
-  const dx = (b.getEast() - b.getWest()) * 0.22, dy = (b.getNorth() - b.getSouth()) * 0.12;
-  measPts = [[c.lat + dy, c.lng - dx], [c.lat - dy, c.lng + dx]];
+/* Clear leaves the tool armed but empty: no line, no handles, no labels, no profile.
+   Re-seeding handles here read as the tool inventing a fresh measurement instead of clearing. */
+function clearMeasure() {
+  clearTimeout(profTimer);
+  measPts = [];
   measProfile = null;
   rebuildMeasure();
-  queueProfile();
 }
 
 async function sampleProfile() {
@@ -1313,24 +1313,48 @@ function profileSvg(pr) {
 }
 
 const measPanel = L.control({ position: 'bottomright' });
-measPanel.onAdd = () => { const d = L.DomUtil.create('div', 'meas-panel'); L.DomEvent.disableClickPropagation(d); measPanel._d = d; return d; };
+measPanel.onAdd = () => {
+  const d = L.DomUtil.create('div', 'meas-panel');
+  /* disableClickPropagation alone is not enough here: it works by flagging the element, and the map
+     walks up from the click target to find that flag. A panel button rewrites the panel's innerHTML
+     while the click is still bubbling, so by the time the map sees it the target is detached, the walk
+     fails and the map treats the tap as a new point. Stopping the events outright is what actually holds,
+     and touch/pointer events need naming explicitly - disableClickPropagation covers only touchstart. */
+  L.DomEvent.disableClickPropagation(d);
+  L.DomEvent.disableScrollPropagation(d);
+  L.DomEvent.on(d, 'touchstart touchend touchcancel pointerdown pointerup mousedown mouseup click dblclick contextmenu',
+    L.DomEvent.stopPropagation);
+  measPanel._d = d;
+  return d;
+};
 measPanel.refresh = () => {
   const d = measPanel._d; if (!d) return;
-  if (measPts.length < 2) { d.innerHTML = '<div class="sub">drag the two handles to measure</div>'; return; }
-  const t = totalM();
-  let html = '<div class="tot">' + (t / NM).toFixed(t / NM < 10 ? 2 : 1) + ' nm</div>' +
-    '<div class="sub">' + (t / 1000).toFixed(1) + ' km · ' + measPts.length + ' points</div>';
-  if (measProfile && measProfile.loading) html += '<div class="sub">sampling depth…</div>';
-  else if (measProfile) {
-    html += profileSvg(measProfile);
-    if (measProfile.minVal != null)
-      html += '<div class="sub">shallowest ' + Math.round(-measProfile.minVal) + ' m · deepest ' + Math.round(-measProfile.deepest) + ' m</div>';
-  } else html += '<div class="sub">drag a handle · tap the map to add a leg</div>';
+  let html;
+  if (!measPts.length) html = '<div class="sub">tap the map to set the start point</div>';
+  else if (measPts.length === 1) html = '<div class="sub">tap the map to set the end point</div>';
+  else {
+    const t = totalM();
+    html = '<div class="tot">' + (t / NM).toFixed(t / NM < 10 ? 2 : 1) + ' nm</div>' +
+      '<div class="sub">' + (t / 1000).toFixed(1) + ' km · ' + measPts.length + ' points</div>';
+    if (measProfile && measProfile.loading) html += '<div class="sub">sampling depth…</div>';
+    else if (measProfile) {
+      html += profileSvg(measProfile);
+      if (measProfile.minVal != null)
+        html += '<div class="sub">shallowest ' + Math.round(-measProfile.minVal) + ' m · deepest ' + Math.round(-measProfile.deepest) + ' m</div>';
+    } else html += '<div class="sub">drag a handle · tap the map to add a leg</div>';
+  }
   html += '<button id="m-undo">undo</button><button id="m-clear">clear</button>';
   d.innerHTML = html;
   const u = d.querySelector('#m-undo'), c = d.querySelector('#m-clear');
-  if (u) u.onclick = () => { if (measPts.length > 2) { measPts.pop(); measProfile = null; rebuildMeasure(); queueProfile(); } };
-  if (c) c.onclick = seedMeasure;
+  if (u) u.onclick = ev => {
+    L.DomEvent.stop(ev);
+    if (!measPts.length) return;
+    measPts.pop();
+    measProfile = null;
+    if (measPts.length < 2) clearMeasure();   // a lone start point is not a measurement: go back to armed and empty
+    else { rebuildMeasure(); queueProfile(); }
+  };
+  if (c) c.onclick = ev => { L.DomEvent.stop(ev); clearMeasure(); };
 };
 
 /* Full-screen: real Fullscreen API where it exists, CSS immersive mode everywhere else */
@@ -1683,17 +1707,16 @@ function toggleMeasure() {
     map.doubleClickZoom.disable();
     map.closePopup();
     measLayer.addTo(map); measPanel.addTo(map);
-    seedMeasure();
+    clearMeasure();
   } else {
-    clearTimeout(profTimer);
+    clearMeasure();
     map.doubleClickZoom.enable(); map.removeLayer(measLayer);
     if (measPanel._map) map.removeControl(measPanel);
-    measPts = []; measProfile = null; measLine = null; measLabels = []; measMarkers = []; measMinMark = null;
   }
 }
 map.on('click', e => {
   if (!measuring) return;
-  measPts.push([e.latlng.lat, e.latlng.lng]);   // extend the route; the two seeded handles stay draggable
+  measPts.push([e.latlng.lat, e.latlng.lng]);   // first tap sets the start, the second the end, later taps extend the route
   measProfile = null;
   rebuildMeasure(); queueProfile();
 });
