@@ -1843,6 +1843,11 @@ const cablesPipes = emodLayer('telecablesactual,powercables,pipelines',
   { opacity: 0.85, minZoom: 6, bounds: L.latLngBounds([-34, -179], [72, 179]) });
 const platforms = emodLayer('platforms',
   { opacity: 0.9, minZoom: 7, bounds: L.latLngBounds([36.3, -11.3], [72.8, 20.8]) });
+/* Onshore: ANEEL's generator registry, every licensed turbine in Brazil (layer 0) and the
+   farms they belong to (layer 1). The north-east wind belt sits right on the coast. */
+const anelWind = arcgisChart('https://sigel.aneel.gov.br/arcgis/rest/services/PORTAL/WFS/MapServer/export',
+  { extra: '&layers=show:0,1', opacity: 0.9, minZoom: 6, maxZoom: 19,
+    bounds: L.latLngBounds([-34, -74], [5.5, -34]), attribution: 'Aerogeradores © ANEEL/SIGEL' });
 // UKHO's worldwide wreck database, the one layer here with real coverage off Brazil;
 // below zoom 9 it paints most of the sea, so it starts there
 const wrecks = emodLayer('wwshipwrecks',
@@ -2674,7 +2679,7 @@ const LAYER_GROUPS = [
   ['Sea', 'check', { 'Sea surface temperature (NASA)': sst, 'Tide gauges, measured (NOAA)': tides, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Satellite, yesterday (NASA)': trueColor, 'Dust and aerosol (NASA)': dust }],
   ['Hazards', 'check', { 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn, 'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet, 'Wrecks, worldwide (UKHO)': wrecks }],
   ['Traffic', 'check', { 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Shipping chokepoints (IMF)': chokepoints, 'Night lights, fishing fleets (NASA)': nightLights }],
-  ['Infrastructure', 'check', { 'Wind farms (EMODnet)': windFarms, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
+  ['Infrastructure', 'check', { 'Wind farms, offshore Europe (EMODnet)': windFarms, 'Wind turbines, Brazil (ANEEL)': anelWind, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
 ];
 const lyrCtl = L.control({ position: 'topright' });
 lyrCtl.onAdd = () => {
@@ -2762,7 +2767,7 @@ map.on('zoomend', coarseNote);
 for (const c of COARSE) c[0].on('add', coarseNote);
 /* The EMODnet layers only exist in European water and only draw from a set zoom; on the wrong
    continent a ticked box that shows nothing looks broken. */
-const BOUNDED = [[windFarms, 'Wind farms', 'European waters'], [platforms, 'Offshore platforms', 'European waters'],
+const BOUNDED = [[windFarms, 'Offshore wind farms', 'European waters only'], [anelWind, 'Brazil wind turbines', 'Brazil only'], [platforms, 'Offshore platforms', 'European waters'],
   [cablesPipes, 'Cables and pipelines', null], [wrecks, 'Wrecks', null]];
 function boundedNote() {
   const z = map.getZoom(), v = map.getBounds();
