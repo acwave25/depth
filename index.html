@@ -828,7 +828,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1043,6 +1043,23 @@ const japan = arcgisChart('https://www.msil.go.jp/arcgis/rest/services/APIv2/Mar
   { extra: '&layers=show:4,5,8,9,12,13,15,16,17,18,20,21,22,26,27&dpi=96', minZoom: 8, opacity: 0.85,
     attribution: '出典：海洋状況表示システム（海しる）海上保安庁' });
 
+/* Iceland: the Coast Guard's hydrographic office publishes its charts through the national
+   mapcache. The WMTS grid is non-standard (512 px tiles, a different origin per level), so the
+   WMS form is used instead — the composite layer switches scale band by itself. */
+const iceland = L.tileLayer.wms('https://gis.lmi.is/mapcache/sjokort/wms', {
+  layers: 'Sjomaelingar:Sjokort_Sjomaelinga', format: 'image/png', version: '1.1.1',
+  minZoom: 6, maxZoom: 19,
+  attribution: 'Sjókort: Sjómælingar Íslands – Landhelgisgæsla Íslands — not for navigation'
+});
+
+/* Sweden: Sjöfartsverket serves this chart openly and its capabilities declare no access
+   constraints, but the agency also sells chart services on annual licence, so it may be
+   withdrawn. Attributed and kept separable for that reason. */
+const sweden = L.tileLayer.wms('https://geokatalog.sjofartsverket.se/mapservice/wms.axd/UppdateradSjokortbild_Trafikverket', {
+  layers: 'HPD_TRP', format: 'image/png', transparent: true, version: '1.1.1',
+  minZoom: 6, maxZoom: 19, attribution: '© Sjöfartsverket'
+});
+
 /* Argentina: SHN serves a mosaic of its own nautical charts through GeoWebCache. The cache is TMS,
    whose rows count from the bottom, hence {-y}. Its extent runs over the Río de la Plata and down
    into the Antarctic sector, so Uruguayan approaches come with it. */
@@ -1089,6 +1106,21 @@ const emodnet = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
   layers: 'emodnet:mean', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.8, maxZoom: 19,
   attribution: 'EMODnet Bathymetry Consortium'
 });
+/* Ireland: INFOMAR's 10 m inshore grid, the finest free depth data for these waters. Depth
+   shading only — no soundings, no chart symbols. */
+const infomar = arcgisChart('https://spatial.marine.ie/arcgis/rest/services/MarineBasemap/INFOMAR_IE_GSI_MI_Bathymetry_10m_Inshore_IE_WGS84_LAT_TIFF/ImageServer/exportImage',
+  { imgFormat: 'png', opacity: 0.8, minZoom: 6, maxZoom: 19,
+    bounds: L.latLngBounds([48.44, -11.77], [56.18, -3.95]),
+    attribution: 'Contains Irish Public Sector Data (Geological Survey Ireland & Marine Institute), CC BY 4.0' });
+
+/* Belgium: Vlaamse Hydrografie's 10 m grid over the Belgian shelf and the Scheldt. */
+const belgium = L.tileLayer.wms('https://gis.afdelingkust.be/geoserver/wms', {
+  layers: 'nautischPortaal:Combined.Bathy.Grid', format: 'image/png', transparent: true,
+  version: '1.1.1', opacity: 0.8, minZoom: 6, maxZoom: 19,
+  bounds: L.latLngBounds([50.943, 2.202], [52.006, 4.454]),
+  attribution: 'Vlaamse Hydrografie, Agentschap MDK'
+});
+
 /* OpenSeaMap crowd-sourced depth contours — patchy, dense in popular sailing areas */
 const osmDepth = L.tileLayer.wms('https://depth.openseamap.org/geoserver/openseamap/wms', {
   layers: 'openseamap:contour,openseamap:contour2', format: 'image/png', transparent: true,
@@ -2524,6 +2556,10 @@ const CHART_SOURCES = [   // areas: one or more [[S,W],[N,E]] boxes of water the
   { id: 'nl', label: 'Netherlands — Rijkswaterstaat', layer: netherlands, areas: [[[51.0, 3.1], [53.6, 7.25]]] },
   { id: 'de', label: 'Germany — BSH (no soundings)', layer: germany, areas: [[[53.2, 6.0], [55.6, 9.6]], [[53.8, 9.3], [55.1, 14.5]]] },
   { id: 'jp', label: 'Japan — MSIL (lights, fairways)', layer: japan, areas: [[[20.0, 122.0], [46.5, 154.5]]] },
+  { id: 'is', label: 'Iceland — Sjómælingar Íslands', layer: iceland,
+    areas: [[[62.5, -28.5], [67.6, -12.0]]] },
+  { id: 'se', label: 'Sweden — Sjöfartsverket', layer: sweden,
+    areas: [[[54.8, 9.5], [66.2, 24.5]]] },
   { id: 'ar', label: 'Argentina — SHN', layer: argentina,
     areas: [[[-58.5, -70.0], [-33.0, -52.0]], [[-78.8, -76.2], [-58.0, -25.0]]] },
   { id: 'pt', label: 'Portugal — IH', layer: portugal, areas: [[[36.5, -10.5], [42.5, -6.0]], [[36.5, -31.5], [40.0, -24.5]], [[32.3, -17.5], [33.2, -16.2]], [[14.5, -25.5], [17.3, -22.5]], [[-18.5, 11.0], [-5.0, 14.0]]] },
@@ -2590,7 +2626,7 @@ L.control.layers(
   { 'Official nautical charts': charts, 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
    'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
    'Shipping chokepoints (IMF)': chokepoints, 'Tide gauges, measured (NOAA)': tides, 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
-   'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Dust and aerosol (NASA)': dust, 'Night lights, fishing fleets (NASA)': nightLights, 'Depth, Europe (EMODnet)': emodnet, 'Wind farms (EMODnet)': windFarms, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms, 'Wrecks, worldwide (UKHO)': wrecks, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+   'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Dust and aerosol (NASA)': dust, 'Night lights, fishing fleets (NASA)': nightLights, 'Depth, Europe (EMODnet)': emodnet, 'Depth, Ireland 10 m (INFOMAR)': infomar, 'Depth, Belgium 10 m (MDK)': belgium, 'Wind farms (EMODnet)': windFarms, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms, 'Wrecks, worldwide (UKHO)': wrecks, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
 
