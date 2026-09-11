@@ -1733,7 +1733,19 @@ async function loadNavwarn() {
         pts++;
       }
     }
-    chartMsg.textContent = j.features.length + ' navigational warnings, ' + pts + ' positions';
+    /* The agency's feed has not published a new message since May 2024, so say how old the newest
+       one is rather than let it pass for live. The warnings themselves stay in force until
+       cancelled, which is why wrecks and rig positions from earlier years are still listed. */
+    const MON = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    let newest = '';
+    for (const f of j.features) {
+      const m = /(\w{3})\s+(\d{4})$/.exec(f.properties.issued || '');
+      if (!m) continue;
+      const key = m[2] + String(MON.indexOf(m[1].toUpperCase())).padStart(2, '0');
+      if (key > newest) newest = key;
+    }
+    const label = newest ? ', newest ' + MON[+newest.slice(4)] + ' ' + newest.slice(0, 4) : '';
+    chartMsg.textContent = j.features.length + ' navigational warnings, ' + pts + ' positions' + label;
     nwLoaded = true;
   } catch (e) { chartMsg.textContent = 'navigational warnings unavailable'; }
 }
