@@ -2624,6 +2624,7 @@ charts.on('remove', () => { chartsOn = false; for (const s of CHART_SOURCES) cha
 
 plain.addTo(map);
 charts.addTo(map);
+conditions.addTo(map);   // on from the start, at the current hour
 let baseLocked = false;                      // a manual pick wins over the automatic swap
 map.on('baselayerchange', () => { baseLocked = true; });
 function syncBase() {
