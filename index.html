@@ -954,15 +954,47 @@ chart.on('remove', () => { chartMsg.style.display = 'none'; chart.clearLayers();
 let chartTimer;
 map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); chartTimer = setTimeout(refreshChart, 350); } });
 
-sat.addTo(map);    // full coverage at every zoom; GMRT WMS renders on demand (7–9 s per tile) so it is optional
-dhn.addTo(map);
-noaa.addTo(map);
-spain.addTo(map);
-portugal.addTo(map);
+/* ---------- Chart quilt: one toggle, the right national service picked by where you are ----------
+   Each source declares the water it covers. Only sources overlapping the view are attached, so
+   panning to Japan does not keep Norway's server busy, and the layer menu stays one line. */
+const CHART_SOURCES = [
+  { id: 'br', label: 'Brazil — DHN', layer: dhn,      bounds: [[-35.5, -70.0], [6.0, -25.0]] },
+  { id: 'us', label: 'USA — NOAA ENC', layer: noaa,   bounds: [[14.0, -180.0], [72.0, -60.0]] },
+  { id: 'es', label: 'Spain — IHM', layer: spain,     bounds: [[27.0, -19.0], [44.5, 5.5]] },
+  { id: 'pt', label: 'Portugal · Madeira · Açores · Cabo Verde · Angola — IH', layer: portugal,
+    bounds: [[-18.5, -32.0], [43.0, -6.0]] },
+];
+const CHARTS_MIN_Z = 6;
+const charts = L.layerGroup();
+let chartsOn = true;
+
+function updateCharts() {
+  const z = map.getZoom(), view = map.getBounds();
+  const want = new Set();
+  if (chartsOn && z >= CHARTS_MIN_Z) {
+    for (const src of CHART_SOURCES) {
+      if (view.intersects(L.latLngBounds(src.bounds))) want.add(src.id);
+    }
+  }
+  for (const src of CHART_SOURCES) {
+    const on = charts.hasLayer(src.layer);
+    if (want.has(src.id) && !on) charts.addLayer(src.layer);
+    else if (!want.has(src.id) && on) charts.removeLayer(src.layer);
+  }
+  if (!chartsOn) chartMsg.textContent = '';
+  else if (z < CHARTS_MIN_Z) chartMsg.textContent = 'zoom in for nautical charts';
+  else if (!want.size) chartMsg.textContent = 'no free official charts published for these waters';
+  else chartMsg.textContent = CHART_SOURCES.filter(s => want.has(s.id)).map(s => s.label).join(' · ');
+}
+charts.on('add', () => { chartsOn = true; updateCharts(); });
+charts.on('remove', () => { chartsOn = false; for (const s of CHART_SOURCES) charts.removeLayer(s.layer); chartMsg.textContent = ''; });
+
+sat.addTo(map);
+charts.addTo(map);
 gpsCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official charts (DHN, Brazil)': dhn, 'US charts (NOAA ENC, live)': noaa, 'Spain (IHM, live)': spain, 'Portugal · Madeira · Azores · Cabo Verde (IH, live)': portugal, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+  { 'Official nautical charts': charts, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
 
@@ -977,13 +1009,11 @@ for (const [n, la, lo] of places) {
     .addTo(placesLayer)
     .bindTooltip(n, { permanent: true, direction: 'right', offset: [7,0], className:'city-tip' });
 }
-const CHARTS_FROM_Z = 7;
 function onZoom() {
   const z = map.getZoom();
   if (z >= 8) { if (!map.hasLayer(placesLayer)) placesLayer.addTo(map); } else map.removeLayer(placesLayer);
-  if (!map.hasLayer(chart)) chartMsg.textContent = z < CHARTS_FROM_Z ? 'zoom in for nautical charts' : '';
 }
-map.on('zoomend', onZoom); onZoom();
+map.on('zoomend', onZoom); map.on('moveend', updateCharts); onZoom();
 
 
 let busy = false;
