@@ -807,7 +807,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides Open-Meteo · imagery NASA EOSDIS GIBS · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1346,6 +1346,59 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.body.classList.contains('immersive') && !document.fullscreenElement) toggleFull();
 });
 
+/* ---------- NASA GIBS imagery: sea surface temperature and yesterday's true colour ----------
+   GIBS needs a date in the path. Today's granules may not be published yet, so true colour asks
+   for yesterday; the analysed SST product resolves 'default' to its own latest day. */
+const gibs = (layer, level, ext, date, opts) => L.tileLayer(
+  'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/' + layer + '/default/' + date +
+  '/GoogleMapsCompatible_Level' + level + '/{z}/{y}/{x}.' + ext,
+  Object.assign({ maxNativeZoom: level, maxZoom: 19, attribution: 'NASA EOSDIS GIBS' }, opts));
+
+const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+const sst = gibs('GHRSST_L4_MUR_Sea_Surface_Temperature', 7, 'png', 'default', { opacity: 0.72 });
+const trueColor = gibs('VIIRS_NOAA20_CorrectedReflectance_TrueColor', 9, 'jpg', yesterday, { opacity: 0.9 });
+
+/* ---------- Tropical cyclones: NOAA advisories, hosted by Esri with open CORS ----------
+   The NHC's own CurrentStorms.json sends no CORS header, so the Living Atlas copy is used. */
+const TC_URL = 'https://services9.arcgis.com/RHVPKKiFTONKtxq3/arcgis/rest/services/Active_Hurricanes_v1/FeatureServer/';
+const cyclones = L.layerGroup();
+let tcTimer = null;
+
+async function tcQuery(id) {
+  const r = await fetch(TC_URL + id + '/query?where=1%3D1&outFields=*&f=geojson&outSR=4326');
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+async function refreshCyclones() {
+  if (!map.hasLayer(cyclones)) return;
+  try {
+    const [cone, track, pts] = await Promise.all([tcQuery(4), tcQuery(2), tcQuery(0)]);
+    cyclones.clearLayers();
+    cyclones.addLayer(L.geoJSON(cone, { style: { color: '#c8102e', weight: 1.5, fillColor: '#c8102e',
+      fillOpacity: 0.14, dashArray: '5,4' },
+      onEachFeature: (f, l) => l.bindPopup('<b>' + (f.properties.stormname || 'Storm') + '</b><br>' +
+        'forecast cone, advisory ' + (f.properties.advisnum || '?')) }));
+    cyclones.addLayer(L.geoJSON(track, { style: { color: '#c8102e', weight: 2 } }));
+    cyclones.addLayer(L.geoJSON(pts, {
+      pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 6, color: '#c8102e', weight: 2,
+        fillColor: '#f8d958', fillOpacity: 0.95 }),
+      onEachFeature: (f, l) => {
+        const q = f.properties;
+        l.bindPopup('<b>' + (q.stormname || 'Storm') + '</b><br>' + (q.tcdvlp || q.stormtype || '') +
+          '<br>' + (q.maxwind != null ? q.maxwind + ' kn, gusts ' + (q.gust != null ? q.gust : '?') + ' kn<br>' : '') +
+          (q.fldatelbl || ''));
+      }
+    }));
+    tcMsg(cone.features.length);
+  } catch (e) { tcMsg(null); }
+}
+function tcMsg(n) {
+  if (!map.hasLayer(cyclones)) return;
+  if (n === 0) chartMsg.textContent = 'no active tropical cyclones in the NOAA advisory feed';
+}
+cyclones.on('add', () => { refreshCyclones(); tcTimer = setInterval(refreshCyclones, 15 * 60 * 1000); });
+cyclones.on('remove', () => { clearInterval(tcTimer); cyclones.clearLayers(); });
+
 /* ---------- Global extremes: where the weather is doing something worth seeing ----------
    One scan of a curated worldwide point list; tap a row and the map flies there. */
 const EXT_TTL = 10 * 60 * 1000;
@@ -1710,7 +1763,8 @@ fsCtl.addTo(map);
 if (typeof LAND_POINTS !== 'undefined') extCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Solar load (Open-Meteo)': solar, 'Rain radar (RainViewer)': radar, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+  { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Solar load (Open-Meteo)': solar, 'Tropical cyclones (NOAA)': cyclones, 'Rain radar (RainViewer)': radar,
+   'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
 
@@ -1748,6 +1802,7 @@ function infoHtml(lat, lng, st) {
   if (st.air) h += row('Air', st.air);
   if (st.sst) h += row('Sea temp', st.sst);
   if (st.wave) h += row('Waves', st.wave);
+  if (st.tide) h += row('Next tide', st.tide);
   if (st.sun) h += row('Sun now', st.sun);
   if (st.sunday) h += row('Sun today', st.sunday);
   if (st.uv) h += row('UV index', st.uv);
@@ -1755,6 +1810,27 @@ function infoHtml(lat, lng, st) {
   if (st.pv) h += row('PV yearly', st.pv);
   if (st.pending) h += '<div class="row"><span>' + st.pending + '</span><b>…</b></div>';
   return h;
+}
+
+/* next turn of the tide from the hourly sea level curve: the first hour where the slope flips */
+function nextTide(h) {
+  const v = h.sea_level_height_msl, t = h.time;
+  if (!v || v.length < 4) return null;
+  const now = Date.now();
+  let i0 = t.findIndex(x => new Date(x + 'Z').getTime() >= now);
+  if (i0 < 1) i0 = 1;
+  for (let i = i0; i < v.length - 1; i++) {
+    if (v[i] == null || v[i - 1] == null || v[i + 1] == null) continue;
+    const up = v[i] - v[i - 1], down = v[i + 1] - v[i];
+    if (up > 0 && down <= 0 || up < 0 && down >= 0) {
+      const when = new Date(t[i] + 'Z');
+      const mins = Math.round((when - now) / 60000);
+      const hh = Math.floor(mins / 60), mm = mins % 60;
+      return (up > 0 ? 'high ' : 'low ') + v[i].toFixed(1) + ' m in ' +
+             (hh > 0 ? hh + ' h ' : '') + mm + ' min';
+    }
+  }
+  return null;
 }
 
 async function showInfo(lat, lng) {
@@ -1808,8 +1884,10 @@ async function showInfo(lat, lng) {
     try {
       const r = await fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + lat.toFixed(4) +
         '&longitude=' + lng.toFixed(4) +
-        '&current=wave_height,wave_direction,wave_period,sea_surface_temperature');
-      const c = (await r.json()).current;
+        '&current=wave_height,wave_direction,wave_period,sea_surface_temperature' +
+        '&hourly=sea_level_height_msl&forecast_days=2');
+      const j = await r.json(), c = j.current;
+      if (j.hourly && j.hourly.sea_level_height_msl) st.tide = nextTide(j.hourly);
       if (c) {
         if (c.sea_surface_temperature != null) st.sst = c.sea_surface_temperature.toFixed(1) + ' °C';
         if (c.wave_height != null)
