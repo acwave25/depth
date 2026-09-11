@@ -711,7 +711,8 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   /* Leaflet's layers icon is an external PNG that is not shipped with this single-file page */
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f2e3d' stroke-width='2' stroke-linejoin='round'><path d='M12 3 2 8l10 5 10-5-10-5z'/><path d='m2 12 10 5 10-5'/><path d='m2 16 10 5 10-5'/></svg>") !important;
   background-size:22px 22px !important; background-repeat:no-repeat; background-position:center; width:36px; height:36px; }
-.wind-arrow, .wave-arrow, .solar-cell { pointer-events:none; }
+.wind-arrow, .wave-arrow, .solar-cell, .cond-cell { pointer-events:none; }
+.cond-cell svg { display:block; overflow:visible; }
 .ship-mark svg { display:block; transform-origin:50% 50%; }
 .eonet-pin { font-size:15px; line-height:18px; text-align:center; }
 .nw-text { font-family:var(--font-mono); font-size:10.5px; white-space:pre-wrap; margin-top:5px;
@@ -752,6 +753,19 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .time-ctl { background:rgba(250,247,242,0.94); border:1px solid rgba(15,46,61,0.2); border-radius:8px;
   padding:5px 10px 3px; font-family:'Outfit',sans-serif; font-size:12px; color:#0f2e3d; min-width:210px; }
 .time-ctl input { width:100%; margin:2px 0 0; accent-color:#0f2e3d; }
+.time-ctl .modes { display:flex; gap:4px; margin:0 0 5px; }
+.time-ctl .modes button { flex:1; font-family:'Outfit',sans-serif; font-size:11px; cursor:pointer;
+  background:#fff; color:#0f2e3d; border:1px solid rgba(15,46,61,0.25); border-radius:5px; padding:3px 0; }
+.time-ctl .modes button.on { background:#0f2e3d; color:#fff; border-color:#0f2e3d; }
+.time-ctl .hint { font-size:10px; opacity:0.55; margin-bottom:3px; }
+.time-ctl .summary { font-size:12px; line-height:1.35; margin:0 0 4px; }
+.time-ctl { max-width:260px; }
+.cond-card { pointer-events:none; }
+.cond-card .cc { transform:translate(-50%,-50%); font-family:var(--font-mono); font-size:10.5px;
+  line-height:1.35; white-space:nowrap; color:#0f2e3d; background:rgba(250,247,242,0.92);
+  border:1px solid rgba(15,46,61,0.18); border-left-width:3px; border-left-style:solid;
+  border-radius:4px; padding:2px 5px; }
+.cond-card .cc b { font-weight:600; }
 .time-ctl b { font-weight:500; }
 .gps-ctl a { font-size:18px; line-height:30px; }
 .gps-ctl.on a { background:#c8102e !important; color:#fff !important; }
@@ -1052,7 +1066,7 @@ const osmDepth = L.tileLayer.wms('https://depth.openseamap.org/geoserver/opensea
 
 /* Weather radar: RainViewer global mosaic, free and keyless. The frame path rotates, so the
    layer asks the index for the newest frame and re-checks every ten minutes. */
-const radar = L.tileLayer('', { opacity: 0.75, maxNativeZoom: 7, maxZoom: 19, attribution: 'RainViewer' });   // above z7 the mosaic serves a 'zoom not supported' graphic, so upsample instead
+const radar = L.tileLayer('', { opacity: 0.75, maxNativeZoom: 7, maxZoom: 10, attribution: 'RainViewer' });   // above z7 the mosaic serves a 'zoom not supported' graphic, so upsample instead
 let radarTimer = null;
 async function refreshRadar() {
   try {
@@ -1544,8 +1558,11 @@ const gibs = (layer, level, ext, date, opts) => L.tileLayer(
   Object.assign({ maxNativeZoom: level, maxZoom: 19, attribution: 'NASA EOSDIS GIBS' }, opts));
 
 const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
-const sst = gibs('GHRSST_L4_MUR_Sea_Surface_Temperature', 7, 'png', 'default', { opacity: 0.72 });
-const trueColor = gibs('VIIRS_NOAA20_CorrectedReflectance_TrueColor', 9, 'jpg', yesterday, { opacity: 0.9 });
+/* These two are coarse global products: sea surface temperature is about a kilometre per pixel and
+   the imagery a few hundred metres. Stretching them to harbour zoom turned the whole screen into a
+   smear, so each stops drawing a couple of levels past its real resolution and says why. */
+const sst = gibs('GHRSST_L4_MUR_Sea_Surface_Temperature', 7, 'png', 'default', { opacity: 0.72, maxZoom: 9 });
+const trueColor = gibs('VIIRS_NOAA20_CorrectedReflectance_TrueColor', 9, 'jpg', yesterday, { opacity: 0.9, maxZoom: 11 });
 
 /* ---------- Tropical cyclones: NOAA advisories, hosted by Esri with open CORS ----------
    The NHC's own CurrentStorms.json sends no CORS header, so the Living Atlas copy is used. */
@@ -1946,10 +1963,10 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && measuring)
 const FCST_HOURS = 72;
 let fcstIdx = 0, fcstTimes = null;
 
-function gridPoints(map, maxCols = 7) {
+function gridPoints(map, maxCols = 7, spacing = 150) {
   const b = map.getBounds(), size = map.getSize();
-  const cols = Math.max(3, Math.min(maxCols, Math.round(size.x / 150)));
-  const rows = Math.max(3, Math.min(6, Math.round(size.y / 150)));
+  const cols = Math.max(3, Math.min(maxCols, Math.round(size.x / spacing)));
+  const rows = Math.max(3, Math.min(6, Math.round(size.y / spacing)));
   const dLat = (b.getNorth() - b.getSouth()) / (rows + 1), dLng = (b.getEast() - b.getWest()) / (cols + 1);
   const pts = [];
   for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++)
@@ -1959,127 +1976,193 @@ function gridPoints(map, maxCols = 7) {
 
 const WIND_COLORS = [[5,'#7c8c99'],[10,'#2f7fb8'],[15,'#22a06b'],[20,'#c9a227'],[25,'#d9772b'],[33,'#c8102e'],[999,'#8b1a4a']];
 const windColor = kn => WIND_COLORS.find(c => kn < c[0])[1];
-
-function arrowIcon(deg, color, label, cls) {
-  // arrow flies with the flow; met direction is where it comes FROM, so rotate by +180
-  const rot = (deg + 180) % 360;
-  return L.divIcon({ className: cls, iconSize: null, html:
-    '<svg width="54" height="54" viewBox="-27 -27 54 54">' +
-      '<g transform="rotate(' + rot + ')">' +
-        '<path d="M0,-13 L0,11" stroke="' + color + '" stroke-width="2.6" stroke-linecap="round"/>' +
-        '<path d="M-5.5,5 L0,12.5 L5.5,5" fill="none" stroke="' + color + '" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '</g>' +
-      '<text class="wind-lab" x="0" y="-15" text-anchor="middle">' + label + '</text>' +
-    '</svg>' });
-}
-
-function makeFlowLayer({ url, params, read, render, cls, seaOnly, onData }) {
-  const group = L.layerGroup();
-  let data = null, token = 0, timer = null;
-
-  async function fetchData() {
-    const pts = gridPoints(map);
-    const my = ++token;
-    const q = url + '?latitude=' + pts.map(p => p[0].toFixed(3)).join(',') +
-      '&longitude=' + pts.map(p => p[1].toFixed(3)).join(',') + '&' + params +
-      '&forecast_days=3&timeformat=iso8601';
-    try {
-      const r = await fetch(q);
-      if (!r.ok) throw new Error(r.status);
-      let j = await r.json();
-      if (!Array.isArray(j)) j = [j];
-      if (my !== token) return;
-      data = j.map((d, i) => ({ ll: pts[i], h: d.hourly, elev: d.elevation }))
-        .filter(d => !seaOnly || !(d.elev > 0));   // the marine grid snaps inland points to the nearest sea cell
-      fcstTimes = j[0] && j[0].hourly ? j[0].hourly.time : null;
-      if (onData) onData(data);
-      draw();
-      timeCtl.refresh();
-    } catch (e) { if (my === token) { group.clearLayers(); } }
-  }
-
-  function draw() {
-    group.clearLayers();
-    if (!data) return;
-    for (const d of data) {
-      const v = read(d.h, Math.min(fcstIdx, FCST_HOURS - 1));
-      if (!v) continue;
-      group.addLayer(L.marker(d.ll, { icon: render(v, cls), interactive: false, keyboard: false }));
-    }
-  }
-
-  group.on('add', () => { fetchData(); });
-  group.on('remove', () => { token++; group.clearLayers(); });
-  group.redraw = draw;
-  group.reload = () => { clearTimeout(timer); timer = setTimeout(() => { if (map.hasLayer(group)) fetchData(); }, 500); };
-  return group;
-}
-
-const wind = makeFlowLayer({
-  url: 'https://api.open-meteo.com/v1/forecast',
-  params: 'hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn',
-  read: (h, i) => h && h.wind_speed_10m[i] != null ? { kn: h.wind_speed_10m[i], deg: h.wind_direction_10m[i] } : null,
-  render: (v, cls) => arrowIcon(v.deg, windColor(v.kn), Math.round(v.kn) + ' kn', cls),
-  cls: 'wind-arrow'
-});
-
-const waves = makeFlowLayer({
-  url: 'https://marine-api.open-meteo.com/v1/marine',
-  params: 'hourly=wave_height,wave_direction,wave_period',
-  read: (h, i) => h && h.wave_height[i] != null ? { m: h.wave_height[i], deg: h.wave_direction[i], t: h.wave_period[i] } : null,
-  render: (v, cls) => arrowIcon(v.deg, windColor(v.m * 6), v.m.toFixed(1) + ' m' + (v.t ? ' / ' + Math.round(v.t) + 's' : ''), cls),
-  cls: 'wave-arrow', seaOnly: true
-});
-
-/* Solar load: shortwave irradiance on a level surface, the number that drives panel output.
-   Same hourly fetch pattern as wind, so the time slider scrubs the sun through the next 3 days. */
 const SOLAR_COLORS = [[50,'#6b7a85'],[200,'#3f7fb5'],[400,'#37a06b'],[600,'#c9a227'],[800,'#e08a2e'],[1000,'#d9542b'],[9999,'#c8102e']];
 const solarColor = w => SOLAR_COLORS.find(c => w < c[0])[1];
 
-function solarIcon(v, cls) {
-  const col = solarColor(v.w), r = 9 + Math.min(9, v.w / 120);
-  const rays = [0, 45, 90, 135, 180, 225, 270, 315].map(a =>
-    '<line transform="rotate(' + a + ')" x1="0" y1="' + (-r - 2.5) + '" x2="0" y2="' + (-r - 6.5) +
-    '" stroke="' + col + '" stroke-width="2" stroke-linecap="round" opacity="' + (v.w > 60 ? 0.9 : 0.25) + '"/>').join('');
+/* ---------- One cell, one symbol ----------
+   Wind, sea state and solar used to be three layers of arrows and labels drawn on the same grid
+   points, stacked on top of each other and unreadable. They are now a single layer with a mode
+   picker: each mode draws one symbol and one number per cell, and the combined mode draws a single
+   symbol carrying all three with no text at all. Numbers for any point are one tap away. */
+let condMode = 'wind';
+const conditions = L.layerGroup();
+let condData = null, condToken = 0, condTimer = null;
+
+const arrowPath = (color, w) =>
+  '<path d="M0,-13 L0,11" stroke="' + color + '" stroke-width="' + w + '" stroke-linecap="round"/>' +
+  '<path d="M-5.5,5 L0,12.5 L5.5,5" fill="none" stroke="' + color + '" stroke-width="' + w +
+  '" stroke-linecap="round" stroke-linejoin="round"/>';
+
+// met direction is where the flow comes FROM, so the symbol is turned to point the way it travels
+const travel = deg => (deg + 180) % 360;
+
+function svgIcon(body, label, size, cls) {
+  const h = size / 2;
   return L.divIcon({ className: cls, iconSize: null, html:
-    '<svg width="64" height="64" viewBox="-32 -32 64 64">' + rays +
-      '<circle r="' + r + '" fill="' + col + '" fill-opacity="0.55" stroke="' + col + '" stroke-width="2"/>' +
-      '<text class="wind-lab solar-lab" x="0" y="' + (r + 13) + '" text-anchor="middle">' + Math.round(v.w) + ' W/m²</text>' +
+    '<svg width="' + size + '" height="' + size + '" viewBox="' + -h + ' ' + -h + ' ' + size + ' ' + size + '">' +
+    body + (label ? '<text class="wind-lab" x="0" y="' + (-h + 12) + '" text-anchor="middle">' + label + '</text>' : '') +
     '</svg>' });
 }
 
-const solar = makeFlowLayer({
-  url: 'https://api.open-meteo.com/v1/forecast',
-  params: 'hourly=shortwave_radiation,cloud_cover',
-  read: (h, i) => h && h.shortwave_radiation[i] != null ? { w: h.shortwave_radiation[i], cc: h.cloud_cover[i] } : null,
-  render: solarIcon,
-  cls: 'solar-cell',
-  /* Turned on at night the whole grid reads 0 W/m2, which looks broken. If no other forecast
-     layer is driving the clock, jump to the next daylight peak instead. */
-  onData: data => {
-    if (!data.length || map.hasLayer(wind) || map.hasLayer(waves)) return;
-    const h = data[Math.floor(data.length / 2)].h;
-    if (!h || !h.shortwave_radiation || h.shortwave_radiation[fcstIdx] > 30) return;
-    let best = fcstIdx, bv = -1;
-    for (let i = fcstIdx; i < Math.min(fcstIdx + 24, FCST_HOURS); i++) {
-      const v = h.shortwave_radiation[i];
-      if (v != null && v > bv) { bv = v; best = i; }
-    }
-    if (bv > 30) { fcstIdx = best; timeCtl.refresh(); }
-  }
-});
+function condIcon(d) {
+  const i = Math.min(fcstIdx, FCST_HOURS - 1);
+  const w = d.wind && d.wind.speed[i] != null ? { kn: d.wind.speed[i], deg: d.wind.dir[i] } : null;
+  const s = d.sun && d.sun[i] != null ? d.sun[i] : null;
+  const v = d.wave && d.wave.h[i] != null && !(d.elev > 0)
+    ? { m: d.wave.h[i], deg: d.wave.dir[i], t: d.wave.t[i] } : null;
 
-/* forecast time slider — appears only while wind, waves or solar is on */
+  if (condMode === 'wind')
+    return w ? svgIcon('<g transform="rotate(' + travel(w.deg) + ')">' + arrowPath(windColor(w.kn), 2.6) + '</g>',
+      Math.round(w.kn) + ' kn', 54, 'wind-arrow') : null;
+
+  if (condMode === 'waves')
+    return v ? svgIcon('<g transform="rotate(' + travel(v.deg) + ')">' + arrowPath(windColor(v.m * 6), 2.6) + '</g>',
+      v.m.toFixed(1) + ' m' + (v.t ? ' · ' + Math.round(v.t) + ' s' : ''), 54, 'wave-arrow') : null;
+
+  if (condMode === 'sun') {
+    if (s == null) return null;
+    const col = solarColor(s), r = 9 + Math.min(9, s / 120);
+    const rays = [0, 45, 90, 135, 180, 225, 270, 315].map(a =>
+      '<line transform="rotate(' + a + ')" x1="0" y1="' + (-r - 2.5) + '" x2="0" y2="' + (-r - 6.5) +
+      '" stroke="' + col + '" stroke-width="2" stroke-linecap="round" opacity="' + (s > 60 ? 0.9 : 0.25) + '"/>').join('');
+    return svgIcon(rays + '<circle r="' + r + '" fill="' + col + '" fill-opacity="0.55" stroke="' + col +
+      '" stroke-width="2"/>', Math.round(s) + ' W/m²', 64, 'solar-cell');
+  }
+
+  /* Combined view: a small card of plain numbers. Symbols looked tidy and told you nothing you
+     could read at a glance, which was the whole complaint about the old stacked layers. */
+  if (!w && !v && s == null) return null;
+  const lines = [];
+  if (w) lines.push('<b>' + Math.round(w.kn) + ' kn</b> ' + compass(w.deg));
+  if (v) lines.push(v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg));
+  if (s != null && s > 20) lines.push(Math.round(s) + ' W/m²');
+  return L.divIcon({ className: 'cond-card', iconSize: null,
+    html: '<div class="cc" style="border-left-color:' + (w ? windColor(w.kn) : '#7f8c8d') + '">' +
+      lines.join('<br>') + '</div>' });
+}
+
+/* One sentence describing the whole view, because a grid of numbers still is not a summary. */
+function conditionsSentence() {
+  if (!condData || !condData.length) return '';
+  const i = Math.min(fcstIdx, FCST_HOURS - 1);
+  const mid = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : null;
+  const kn = [], wdir = [], m = [], per = [], sdir = [], sun = [];
+  for (const d of condData) {
+    if (d.wind && d.wind.speed[i] != null) { kn.push(d.wind.speed[i]); wdir.push(d.wind.dir[i]); }
+    if (d.wave && d.wave.h[i] != null && !(d.elev > 0)) {
+      m.push(d.wave.h[i]); per.push(d.wave.t[i]); sdir.push(d.wave.dir[i]);
+    }
+    if (d.sun && d.sun[i] != null) sun.push(d.sun[i]);
+  }
+  // average a bearing through its vector, or north-west of north averages to south
+  const meanDir = list => {
+    if (!list.length) return null;
+    let x = 0, y = 0;
+    for (const d of list) { x += Math.cos(d * Math.PI / 180); y += Math.sin(d * Math.PI / 180); }
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  };
+  const parts = [];
+  if (kn.length) {
+    const lo = Math.round(Math.min(...kn)), hi = Math.round(Math.max(...kn));
+    parts.push('wind ' + (hi - lo > 3 ? lo + ' to ' + hi : hi) + ' kn from the ' +
+      compassWord(meanDir(wdir)));
+  }
+  if (m.length) parts.push('swell ' + mid(m).toFixed(1) + ' m every ' + Math.round(mid(per)) +
+    ' s from the ' + compassWord(meanDir(sdir)));
+  if (sun.length) {
+    const peak = Math.round(Math.max(...sun));
+    parts.push(peak < 20 ? 'sun down' : 'sun ' + peak + ' W/m²');
+  }
+  return parts.length ? parts.join(', ') : '';
+}
+
+const COMPASS_WORD = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+const compassWord = d => d == null ? '' : COMPASS_WORD[Math.round(((d % 360) + 360) % 360 / 45) % 8];
+
+async function fetchConditions() {
+  const pts = gridPoints(map, condMode === 'all' ? 5 : 7, condMode === 'all' ? 200 : 150);
+  const my = ++condToken;
+  const lat = pts.map(p => p[0].toFixed(3)).join(','), lon = pts.map(p => p[1].toFixed(3)).join(',');
+  const tail = '&forecast_days=3&timeformat=iso8601';
+  try {
+    const [air, sea] = await Promise.all([
+      fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+        '&hourly=wind_speed_10m,wind_direction_10m,shortwave_radiation&wind_speed_unit=kn' + tail)
+        .then(r => r.ok ? r.json() : Promise.reject(r.status)),
+      fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + lat + '&longitude=' + lon +
+        '&hourly=wave_height,wave_direction,wave_period' + tail)
+        .then(r => r.ok ? r.json() : null).catch(() => null)
+    ]);
+    if (my !== condToken) return;
+    const A = Array.isArray(air) ? air : [air];
+    const S = sea ? (Array.isArray(sea) ? sea : [sea]) : [];
+    condData = A.map((a, k) => {
+      const h = a.hourly, m = S[k] && S[k].hourly;
+      return {
+        ll: pts[k], elev: a.elevation,
+        wind: h ? { speed: h.wind_speed_10m, dir: h.wind_direction_10m } : null,
+        sun: h ? h.shortwave_radiation : null,
+        wave: m ? { h: m.wave_height, dir: m.wave_direction, t: m.wave_period } : null
+      };
+    });
+    fcstTimes = A[0] && A[0].hourly ? A[0].hourly.time : null;
+    nightJump();
+    drawConditions();
+    timeCtl.refresh();
+  } catch (e) { if (my === condToken) conditions.clearLayers(); }
+}
+
+function drawConditions() {
+  conditions.clearLayers();
+  if (!condData) return;
+  for (const d of condData) {
+    const icon = condIcon(d);
+    if (icon) conditions.addLayer(L.marker(d.ll, { icon, interactive: false, keyboard: false }));
+  }
+}
+
+/* Switched on after dark the sun reads zero everywhere, which looks like a broken layer, so jump
+   the clock to the next daylight peak instead. Only when the sun is what you asked to see. */
+function nightJump() {
+  if (condMode !== 'sun' || !condData || !condData.length) return;
+  const sun = condData[Math.floor(condData.length / 2)].sun;
+  if (!sun || sun[fcstIdx] > 30) return;
+  let best = fcstIdx, bv = -1;
+  for (let i = fcstIdx; i < Math.min(fcstIdx + 24, FCST_HOURS); i++)
+    if (sun[i] != null && sun[i] > bv) { bv = sun[i]; best = i; }
+  if (bv > 30) { fcstIdx = best; timeCtl.refresh(); }
+}
+
+conditions.on('add', fetchConditions);
+conditions.on('remove', () => { condToken++; conditions.clearLayers(); });
+conditions.reload = () => {
+  clearTimeout(condTimer);
+  condTimer = setTimeout(() => { if (map.hasLayer(conditions)) fetchConditions(); }, 500);
+};
+
+/* forecast clock and mode picker — visible only while the layer is on */
+const COND_MODES = [['wind', 'Wind'], ['waves', 'Swell'], ['sun', 'Sun'], ['all', 'All']];
 const timeCtl = L.control({ position: 'bottomleft' });
 timeCtl.onAdd = () => {
   const d = L.DomUtil.create('div', 'time-ctl');
-  d.innerHTML = '<div><b id="t-label">now</b> <span id="t-when"></span></div>' +
-                '<input id="t-slider" type="range" min="0" max="' + (FCST_HOURS - 1) + '" value="0" step="1">';
+  d.innerHTML = '<div class="modes">' + COND_MODES.map(m =>
+      '<button data-m="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
+    '<div class="summary" id="t-sum"></div>' +
+    '<div class="hint" id="t-hint"></div>' +
+    '<div><b id="t-label">now</b> <span id="t-when"></span></div>' +
+    '<input id="t-slider" type="range" min="0" max="' + (FCST_HOURS - 1) + '" value="0" step="1">';
   L.DomEvent.disableClickPropagation(d);
+  L.DomEvent.disableScrollPropagation(d);
   setTimeout(() => {
     d.querySelector('#t-slider').addEventListener('input', e => {
-      fcstIdx = +e.target.value; wind.redraw(); waves.redraw(); solar.redraw(); timeCtl.refresh();
+      fcstIdx = +e.target.value; drawConditions(); timeCtl.refresh();
     });
+    d.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', ev => {
+      L.DomEvent.stop(ev);
+      condMode = b.dataset.m;
+      timeCtl.refresh();
+      fetchConditions();   // the combined view uses a coarser grid, so the points change with the mode
+    }));
   }, 0);
   return d;
 };
@@ -2089,18 +2172,27 @@ timeCtl.refresh = () => {
   lab.textContent = fcstIdx === 0 ? 'now' : '+' + fcstIdx + ' h';
   const sl = document.getElementById('t-slider');
   if (sl && +sl.value !== fcstIdx) sl.value = fcstIdx;
+  const sum = document.getElementById('t-sum');
+  if (sum) sum.textContent = conditionsSentence();
+  const hint = document.getElementById('t-hint');
+  if (hint) hint.textContent = condMode === 'all'
+    ? 'every cell: wind, swell, sun · tap anywhere for the full readout'
+    : condMode === 'wind' ? 'knots, arrow flies with the wind'
+    : condMode === 'waves' ? 'metres and period, arrow with the swell' : 'watts per square metre';
+  document.querySelectorAll('.modes button').forEach(b =>
+    b.classList.toggle('on', b.dataset.m === condMode));
   if (fcstTimes && fcstTimes[fcstIdx]) {
     const t = new Date(fcstTimes[fcstIdx] + 'Z');
     when.textContent = t.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   } else when.textContent = '';
 };
 function syncTimeCtl() {
-  const on = map.hasLayer(wind) || map.hasLayer(waves) || map.hasLayer(solar);
+  const on = map.hasLayer(conditions);
   if (on && !timeCtl._map) timeCtl.addTo(map);
   else if (!on && timeCtl._map) map.removeControl(timeCtl);
   if (on) timeCtl.refresh();
 }
-for (const l of [wind, waves, solar]) { l.on('add', syncTimeCtl); l.on('remove', syncTimeCtl); }
+conditions.on('add', syncTimeCtl); conditions.on('remove', syncTimeCtl);
 
 /* ---------- Chart quilt: one toggle, the right national service picked by where you are ----------
    Each source declares the water it covers. Only sources overlapping the view are attached, so
@@ -2156,7 +2248,7 @@ fsCtl.addTo(map);
 if (typeof LAND_POINTS !== 'undefined') extCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Solar load (Open-Meteo)': solar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
+  { 'Official nautical charts': charts, 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
    'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
    'Shipping chokepoints (IMF)': chokepoints, 'Ship traffic (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
    'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
@@ -2178,7 +2270,19 @@ function onZoom() {
   const z = map.getZoom();
   if (z >= 8) { if (!map.hasLayer(placesLayer)) placesLayer.addTo(map); } else map.removeLayer(placesLayer);
 }
-map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); wind.reload(); waves.reload(); solar.reload(); }); onZoom();
+/* Leaflet simply stops drawing a layer past its maxZoom, which looks like a broken toggle unless
+   the page says what happened. */
+const COARSE = [[sst, 9, 'Sea surface temperature'], [trueColor, 11, 'Satellite imagery'], [radar, 10, 'Rain radar']];
+function coarseNote() {
+  const z = map.getZoom();
+  const hidden = COARSE.filter(c => map.hasLayer(c[0]) && z > c[1]);
+  if (hidden.length) chartMsg.textContent = hidden.map(c => c[2]).join(' and ') +
+    ' hidden here: too coarse past zoom ' + Math.min(...hidden.map(c => c[1]));
+}
+map.on('zoomend', coarseNote);
+for (const c of COARSE) c[0].on('add', coarseNote);
+
+map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); conditions.reload(); }); onZoom();
 
 
 /* ---------- Pointer: tap anywhere for depth, wind, air and sea temperature, and sea state ---------- */
