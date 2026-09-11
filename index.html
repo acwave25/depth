@@ -1435,8 +1435,9 @@ extPanel.render = data => {
   d.querySelectorAll('.row').forEach(btn => {
     btn.onclick = () => {
       const e = ROWS[+btn.dataset.i][1], p = e.r.p;
-      map.flyTo([p.lat, p.lon], Math.max(map.getZoom(), 6), { duration: 1.2 });
-      map.once('moveend', () => showInfo(p.lat, p.lon));
+      // setView, not flyTo: a long animated flight can be cut short and leave the map behind
+      map.setView([p.lat, p.lon], Math.max(map.getZoom(), 6));
+      showInfo(p.lat, p.lon);
     };
   });
 };
