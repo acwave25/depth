@@ -862,8 +862,8 @@ const sat = L.tileLayer(
 // flat base under the charts: photography next to chart paper reads as a rendering fault,
 // and a chart sheet ends in a hard rectangle, so uncharted ground should look blank, not detailed
 const plain = L.tileLayer(
-  'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
-  subdomains: 'abcd', maxZoom: 19, attribution: 'CARTO, OpenStreetMap'
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+  maxNativeZoom: 16, maxZoom: 19, attribution: 'Esri, HERE, Garmin'   // CARTO started watermarking its keyless tiles
 });
 const esriRef = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
