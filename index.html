@@ -2281,7 +2281,7 @@ function limitZoom(brazil) {
   if (map.getMaxZoom() !== lim) map.setMaxZoom(lim);
 }
 charts.on('add', () => { chartsOn = true; updateCharts(); });
-charts.on('remove', () => { chartsOn = false; for (const s of CHART_SOURCES) charts.removeLayer(s.layer); chartMsg.textContent = ''; });
+charts.on('remove', () => { chartsOn = false; for (const s of CHART_SOURCES) charts.removeLayer(s.layer); chartMsg.textContent = ''; limitZoom(false); });
 
 plain.addTo(map);
 charts.addTo(map);
