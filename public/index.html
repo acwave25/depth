@@ -1982,6 +1982,8 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && measuring)
 const FCST_HOURS = 72;
 let fcstIdx = 0, fcstTimes = null;
 
+const COND_MAX_Z = 11;          // Open-Meteo resolves ~11 km; closer in, every cell holds the same value
+
 function gridPoints(map, maxCols = 7, spacing = 150) {
   const b = map.getBounds(), size = map.getSize();
   const cols = Math.max(3, Math.min(maxCols, Math.round(size.x / spacing)));
@@ -2052,12 +2054,12 @@ function condIcon(d) {
      could read at a glance, which was the whole complaint about the old stacked layers. */
   const air = d.air && d.air[i] != null ? d.air[i] : null;
   const sst = d.sst && d.sst[i] != null ? d.sst[i] : null;
+  if (d.elev > 0) return null;   // this is a sea forecast; inland cells had nothing to say
   if (!w && !v && s == null && air == null) return null;
   const lines = [];
   // "all" means all of it: a line that vanishes at night reads as missing data, not as darkness
   lines.push(w ? '<b>' + Math.round(w.kn) + ' kn</b> ' + compass(w.deg) : 'wind —');
-  lines.push(v ? v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg)
-               : (d.elev > 0 ? 'inland' : 'swell —'));
+  lines.push(v ? v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg) : 'swell —');
   lines.push(s == null ? 'sun —' : s > 1 ? Math.round(s) + ' W/m²' : 'dark');
   if (air != null || sst != null)
     lines.push((air != null ? Math.round(air) + '° air' : '') +
@@ -2107,6 +2109,7 @@ const COMPASS_WORD = ['north', 'north-east', 'east', 'south-east', 'south', 'sou
 const compassWord = d => d == null ? '' : COMPASS_WORD[Math.round(((d % 360) + 360) % 360 / 45) % 8];
 
 async function fetchConditions() {
+  if (map.getZoom() > COND_MAX_Z) { conditions.clearLayers(); timeCtl.refresh(); return; }
   const pts = gridPoints(map, condMode === 'all' ? 4 : 7, condMode === 'all' ? 240 : 150);
   const my = ++condToken;
   const lat = pts.map(p => p[0].toFixed(3)).join(','), lon = pts.map(p => p[1].toFixed(3)).join(',');
@@ -2144,6 +2147,7 @@ async function fetchConditions() {
 function drawConditions() {
   conditions.clearLayers();
   if (!condData) return;
+  if (map.getZoom() > COND_MAX_Z) return;
   for (const d of condData) {
     const icon = condIcon(d);
     if (icon) conditions.addLayer(L.marker(d.ll, { icon, interactive: false, keyboard: false }));
@@ -2204,8 +2208,10 @@ timeCtl.refresh = () => {
   const sum = document.getElementById('t-sum');
   if (sum) sum.textContent = conditionsSentence();
   const hint = document.getElementById('t-hint');
-  if (hint) hint.textContent = condMode === 'all'
-    ? 'every cell: wind, swell, sun · tap anywhere for the full readout'
+  if (hint) hint.textContent = map.getZoom() > COND_MAX_Z
+    ? 'too close for the 11 km forecast grid — tap the map for this exact point'
+    : condMode === 'all'
+    ? 'every sea cell: wind, swell, sun, temperature · tap anywhere for the full readout'
     : condMode === 'wind' ? 'knots, arrow flies with the wind'
     : condMode === 'waves' ? 'metres and period, arrow with the swell' : 'watts per square metre';
   document.querySelectorAll('.modes button').forEach(b =>
