@@ -825,7 +825,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1745,6 +1745,102 @@ async function loadChokepoints() {
 }
 chokepoints.on('add', loadChokepoints);
 
+/* ---------- Tide gauges: NOAA CO-OPS, real measured water level (US waters) ----------
+   Open-Meteo gives modelled sea level; these are physical float/microwave gauges reporting
+   every six minutes. Both endpoints send access-control-allow-origin: *, so no proxy.
+   The station list is 777 kB of JSON but 32 kB gzipped on the wire, so it loads once and
+   the viewport only decides what is drawn. Readings are fetched per station on popup open. */
+const COOPS_MD   = 'https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=waterlevels';
+const COOPS_DATA = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter';
+const COOPS_APP  = 'depth-map';                 // CO-OPS asks callers to identify themselves
+const COOPS_MAX_Z = 5;                          // below this the coast is a solid bar of dots
+
+const tides = L.layerGroup();
+let coopsStations = null, coopsMarkers = new Map(), coopsTimer = null;
+
+/* One product per request — datagetter rejects a comma-separated list. */
+function coopsUrl(p) {
+  return COOPS_DATA + '?' + new URLSearchParams(Object.assign(
+    { time_zone: 'lst_ldt', units: 'english', format: 'json', application: COOPS_APP }, p));
+}
+const coopsGet = async p => {
+  const r = await fetch(coopsUrl(p));
+  const j = await r.json();
+  return j.error ? null : j;                    // "not offered at this station" comes back 200 + error
+};
+
+async function loadTides() {
+  if (coopsStations) return drawTides();
+  try {
+    const j = await (await fetch(COOPS_MD)).json();
+    coopsStations = j.stations.filter(s => s.lat != null && !s.nonNavigational);
+    drawTides();
+  } catch (e) { chartMsg.textContent = 'NOAA tide stations unavailable'; }
+}
+
+function drawTides() {
+  if (!coopsStations || !map.hasLayer(tides)) return;
+  if (map.getZoom() < COOPS_MAX_Z) { tides.clearLayers(); coopsMarkers.clear(); return; }
+  const view = map.getBounds().pad(0.25), keep = new Set();
+  for (const s of coopsStations) {
+    if (!view.contains([s.lat, s.lng])) continue;
+    keep.add(s.id);
+    if (coopsMarkers.has(s.id)) continue;
+    const m = L.circleMarker([s.lat, s.lng], {
+      radius: 5, color: '#0f2e3d', weight: 1.5,
+      fillColor: s.greatlakes ? '#5dbdb4' : '#f8d958', fillOpacity: 0.9
+    }).bindPopup('<b>' + s.name + '</b><br><small>reading…</small>', { maxWidth: 300 });
+    m.on('popupopen', () => coopsPopup(s, m));
+    tides.addLayer(m); coopsMarkers.set(s.id, m);
+  }
+  for (const [id, m] of coopsMarkers)
+    if (!keep.has(id)) { tides.removeLayer(m); coopsMarkers.delete(id); }
+}
+
+/* Fetched only when a popup opens — 300 stations polled on a timer would be gratuitous. */
+const fToC = f => ((+f - 32) * 5 / 9).toFixed(1);
+
+async function coopsPopup(s, m) {
+  const st = { station: s.id };
+  // predictions need an explicit window; date=latest is rejected for that product
+  const now = new Date(), pad = n => String(n).padStart(2, '0');
+  const beg = now.getUTCFullYear() + pad(now.getUTCMonth() + 1) + pad(now.getUTCDate()) +
+              ' ' + pad(now.getUTCHours()) + ':' + pad(now.getUTCMinutes());
+  const [wl, hilo, wt, at, wind, bp] = await Promise.all([
+    coopsGet(Object.assign({ date: 'latest', product: 'water_level', datum: 'MLLW' }, st)),
+    coopsGet(Object.assign({ begin_date: beg, range: 30, product: 'predictions', datum: 'MLLW',
+                             interval: 'hilo', time_zone: 'gmt' }, st)),
+    coopsGet(Object.assign({ date: 'latest', product: 'water_temperature' }, st)),
+    coopsGet(Object.assign({ date: 'latest', product: 'air_temperature' }, st)),
+    coopsGet(Object.assign({ date: 'latest', product: 'wind' }, st)),
+    coopsGet(Object.assign({ date: 'latest', product: 'air_pressure' }, st))
+  ]);
+  const d = wl && wl.data && wl.data[0];
+  const ft = v => (v * 0.3048).toFixed(2) + ' m (' + (+v).toFixed(2) + ' ft)';
+  let h = '<b>' + s.name + '</b> <small>· ' + s.state + ' · ' + s.id + '</small>';
+  h += d ? '<br>' + ft(d.v) + ' above chart datum (MLLW)<br><small>measured ' + d.t + ' ' +
+           s.timezone + (d.q === 'p' ? ' · preliminary' : ' · verified') + '</small>'
+         : '<br><small>no current water level</small>';
+  const hl = hilo && hilo.predictions ? hilo.predictions.slice(0, 4) : [];
+  if (hl.length) h += '<br><small>' + hl.map(p =>
+    (p.type === 'H' ? 'High ' : 'Low ') + p.t.slice(11) + 'Z ' + (p.v * 0.3048).toFixed(1) + ' m').join(' · ') + '</small>';
+  const extra = [];
+  if (wt && wt.data) extra.push('sea ' + fToC(wt.data[0].v) + ' °C');
+  if (at && at.data) extra.push('air ' + fToC(at.data[0].v) + ' °C');
+  if (wind && wind.data) extra.push('wind ' + wind.data[0].dr + ' ' + Math.round(wind.data[0].s) +
+    ' kn g' + Math.round(wind.data[0].g));
+  if (bp && bp.data) extra.push(bp.data[0].v + ' hPa');
+  if (extra.length) h += '<br><small>' + extra.join(' · ') + '</small>';
+  m.setPopupContent(h);
+}
+
+tides.on('add', loadTides);
+map.on('moveend', () => {
+  if (!map.hasLayer(tides)) return;
+  clearTimeout(coopsTimer); coopsTimer = setTimeout(drawTides, 250);
+});
+
+
 /* GDACS: one call covers cyclones, floods, earthquakes, volcanoes and wildfires worldwide, each
    graded green, orange or red. Green is routine, so only orange and red are drawn. */
 const GDACS_COLOR = { Red: '#c8102e', Orange: '#e08a2e', Green: '#5dbdb4' };
@@ -2392,7 +2488,7 @@ L.control.layers(
   { 'Plain (CARTO)': plain, 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
   { 'Official nautical charts': charts, 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
    'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
-   'Shipping chokepoints (IMF)': chokepoints, 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
+   'Shipping chokepoints (IMF)': chokepoints, 'Tide gauges, measured (NOAA)': tides, 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
    'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
