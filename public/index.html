@@ -2760,6 +2760,21 @@ function coarseNote() {
 }
 map.on('zoomend', coarseNote);
 for (const c of COARSE) c[0].on('add', coarseNote);
+/* The EMODnet layers only exist in European water and only draw from a set zoom; on the wrong
+   continent a ticked box that shows nothing looks broken. */
+const BOUNDED = [[windFarms, 'Wind farms', 'European waters'], [platforms, 'Offshore platforms', 'European waters'],
+  [cablesPipes, 'Cables and pipelines', null], [wrecks, 'Wrecks', null]];
+function boundedNote() {
+  const z = map.getZoom(), v = map.getBounds();
+  for (const [l, name, where] of BOUNDED) {
+    if (!map.hasLayer(l)) continue;
+    const o = l.options;
+    if (o.bounds && !o.bounds.intersects(v)) chartMsg.textContent = name + ': ' + (where || 'no data in this part of the world');
+    else if (z < o.minZoom) chartMsg.textContent = name + ' hidden here: zoom in to ' + o.minZoom + ' or closer';
+  }
+}
+map.on('moveend', boundedNote);
+for (const b of BOUNDED) b[0].on('add', boundedNote);
 
 map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); conditions.reload(); }); onZoom();
 // open on the viewer's own position; a refusal leaves the default view without complaint
