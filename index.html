@@ -713,6 +713,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   background-size:22px 22px !important; background-repeat:no-repeat; background-position:center; width:36px; height:36px; }
 .wind-arrow, .wave-arrow, .solar-cell { pointer-events:none; }
 .ship-mark svg { display:block; transform-origin:50% 50%; }
+.eonet-pin { font-size:15px; line-height:18px; text-align:center; }
 .solar-cell svg { display:block; overflow:visible; }
 .solar-lab { font-family:'Outfit',sans-serif; font-size:10.5px; font-weight:600; fill:#0f2e3d; }
 .wind-arrow svg, .wave-arrow svg { display:block; overflow:visible; }
@@ -808,7 +809,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1585,6 +1586,128 @@ function tcMsg(n) {
 cyclones.on('add', () => { refreshCyclones(); tcTimer = setInterval(refreshCyclones, 15 * 60 * 1000); });
 cyclones.on('remove', () => { clearInterval(tcTimer); cyclones.clearLayers(); });
 
+/* ---------- World state: shipping chokepoints, global hazards, quakes, volcanoes and icebergs ----
+   All four are free, need no key, and send an open cross-origin header, so a static page can read
+   them directly. Each loads once when its layer is switched on. */
+const PW = 'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/';
+const esriQuery = (svc, extra) => fetch(PW + svc + '/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson' +
+  (extra || '')).then(r => r.ok ? r.json() : Promise.reject(r.status));
+
+const chokepoints = L.layerGroup();
+let cpLoaded = false;
+async function loadChokepoints() {
+  if (cpLoaded) return;
+  try {
+    const [where, daily] = await Promise.all([
+      esriQuery('PortWatch_chokepoints_database'),
+      esriQuery('Daily_Chokepoints_Data', '&orderByFields=date%20DESC&resultRecordCount=200')
+    ]);
+    const latest = new Map();   // the daily table carries no geometry, so join it on the point database
+    for (const f of daily.features) {
+      const q = f.properties;
+      if (!latest.has(q.portid)) latest.set(q.portid, q);
+    }
+    for (const f of where.features) {
+      if (!f.geometry) continue;
+      const q = f.properties, d = latest.get(q.portid);
+      const [lon, lat] = f.geometry.coordinates;
+      const n = d ? d.n_total : null;
+      chokepoints.addLayer(L.circleMarker([lat, lon], {
+        radius: n ? Math.max(6, Math.min(18, 5 + Math.sqrt(n))) : 6,
+        color: '#0f2e3d', weight: 1.5, fillColor: '#f8d958', fillOpacity: 0.85
+      }).bindPopup('<b>' + (q.fullname || q.portname) + '</b>' +
+        (d ? '<br>' + d.n_total + ' ships on ' + d.date +
+             '<br>' + Math.round(d.capacity / 1000).toLocaleString() + ' thousand tonnes capacity' +
+             '<br><small>' + d.n_tanker + ' tankers · ' + d.n_container + ' container · ' +
+             d.n_dry_bulk + ' bulk</small>' : '<br>no recent count')));
+    }
+    cpLoaded = true;
+  } catch (e) { chartMsg.textContent = 'chokepoint data unavailable'; }
+}
+chokepoints.on('add', loadChokepoints);
+
+/* GDACS: one call covers cyclones, floods, earthquakes, volcanoes and wildfires worldwide, each
+   graded green, orange or red. Green is routine, so only orange and red are drawn. */
+const GDACS_COLOR = { Red: '#c8102e', Orange: '#e08a2e', Green: '#5dbdb4' };
+const GDACS_NAME = { TC: 'Tropical cyclone', EQ: 'Earthquake', FL: 'Flood', VO: 'Volcano', WF: 'Wildfire', DR: 'Drought' };
+const hazards = L.layerGroup();
+let hzLoaded = false;
+async function loadHazards() {
+  if (hzLoaded) return;
+  try {
+    const r = await fetch('https://www.gdacs.org/gdacsapi/api/events/geteventlist/EVENTS4APP');
+    const j = await r.json();
+    let n = 0;
+    for (const f of j.features) {
+      const q = f.properties;
+      if (q.alertlevel === 'Green' && q.eventtype !== 'TC') continue;   // keep every storm, drop routine events
+      if (!f.geometry || f.geometry.type !== 'Point') continue;
+      const [lon, lat] = f.geometry.coordinates;
+      const col = GDACS_COLOR[q.alertlevel] || '#7f8c8d';
+      hazards.addLayer(L.circleMarker([lat, lon], { radius: 7, color: col, weight: 2,
+        fillColor: col, fillOpacity: 0.35 })
+        .bindPopup('<b>' + (q.name || GDACS_NAME[q.eventtype] || q.eventtype) + '</b><br>' +
+          q.alertlevel.toLowerCase() + ' alert<br><small>' +
+          (q.htmldescription || '').replace(/<[^>]*>/g, '') + '</small>'));
+      n++;
+    }
+    chartMsg.textContent = n + ' active hazards (GDACS)';
+    hzLoaded = true;
+  } catch (e) { chartMsg.textContent = 'hazard feed unavailable'; }
+}
+hazards.on('add', loadHazards);
+
+/* Earthquakes, past day, magnitude 2.5 and up. Near a coast a big shallow one is a tsunami question. */
+const quakes = L.layerGroup();
+let qkLoaded = false;
+async function loadQuakes() {
+  if (qkLoaded) return;
+  try {
+    const r = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson');
+    const j = await r.json();
+    for (const f of j.features) {
+      const q = f.properties, [lon, lat, depth] = f.geometry.coordinates;
+      const m = q.mag || 0;
+      quakes.addLayer(L.circleMarker([lat, lon], { radius: Math.max(4, m * 2.2),
+        color: '#c8102e', weight: 1.5, fillColor: '#c8102e', fillOpacity: 0.25 })
+        .bindPopup('<b>M ' + m.toFixed(1) + '</b><br>' + q.place + '<br>' +
+          Math.round(depth) + ' km deep<br><small>' + new Date(q.time).toLocaleString() +
+          (q.tsunami ? '<br>tsunami evaluation issued' : '') + '</small>'));
+    }
+    chartMsg.textContent = j.features.length + ' earthquakes in the last day';
+    qkLoaded = true;
+  } catch (e) { chartMsg.textContent = 'earthquake feed unavailable'; }
+}
+quakes.on('add', loadQuakes);
+
+/* NASA EONET tracks icebergs and erupting volcanoes as point events. Wildfires are 99% of the feed and
+   would swamp the map, so only these two categories are asked for. */
+const eonet = L.layerGroup();
+let eoLoaded = false;
+async function loadEonet() {
+  if (eoLoaded) return;
+  try {
+    const [ice, volc] = await Promise.all([
+      fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=seaLakeIce').then(r => r.json()),
+      fetch('https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=volcanoes').then(r => r.json())
+    ]);
+    const add = (events, berg) => {
+      for (const e of events) {
+        const g = e.geometry && e.geometry[e.geometry.length - 1];
+        if (!g || g.type !== 'Point') continue;
+        const [lon, lat] = g.coordinates;
+        eonet.addLayer(L.marker([lat, lon], { icon: L.divIcon({ className: 'eonet-pin',
+          iconSize: [18, 18], html: berg ? '🧊' : '🌋' }) })
+          .bindPopup('<b>' + e.title + '</b><br><small>last seen ' +
+            new Date(g.date).toLocaleDateString() + '</small>'));
+      }
+    };
+    add(ice.events, true); add(volc.events, false);
+    eoLoaded = true;
+  } catch (e) { chartMsg.textContent = 'NASA event feed unavailable'; }
+}
+eonet.on('add', loadEonet);
+
 /* ---------- Global extremes: where the weather is doing something worth seeing ----------
    One scan of a curated worldwide point list; tap a row and the map flies there. */
 const EXT_TTL = 10 * 60 * 1000;
@@ -1990,7 +2113,9 @@ fsCtl.addTo(map);
 if (typeof LAND_POINTS !== 'undefined') extCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Solar load (Open-Meteo)': solar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Ship traffic (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
+  { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Solar load (Open-Meteo)': solar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards,
+   'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
+   'Shipping chokepoints (IMF)': chokepoints, 'Ship traffic (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
    'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
