@@ -715,6 +715,20 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .wind-arrow svg, .wave-arrow svg { display:block; overflow:visible; }
 .wind-lab { font-family:'Outfit',sans-serif; font-size:10px; font-weight:500; fill:#0f2e3d;
   paint-order:stroke; stroke:rgba(250,247,242,0.9); stroke-width:2.5px; stroke-linejoin:round; }
+.ruler-ctl a { font-size:17px; line-height:30px; }
+.ruler-ctl.on a { background:#0f2e3d !important; color:#fff !important; }
+.leg-lab { font-family:'Outfit',sans-serif; font-size:11px; font-weight:500; color:#0f2e3d;
+  white-space:nowrap; transform:translate(-50%,-50%); background:rgba(250,247,242,0.92);
+  border:1px solid rgba(15,46,61,0.25); border-radius:5px; padding:1px 5px; }
+.meas-pt { width:9px; height:9px; background:#fff; border:2px solid #0f2e3d; border-radius:50%;
+  transform:translate(-50%,-50%); }
+.meas-panel { background:rgba(250,247,242,0.96); border:1px solid rgba(15,46,61,0.2); border-radius:8px;
+  padding:8px 10px; font-family:'Outfit',sans-serif; font-size:12px; color:#0f2e3d; width:250px; }
+.meas-panel .tot { font-size:15px; font-weight:500; }
+.meas-panel .sub { opacity:0.65; font-size:11px; }
+.meas-panel button { font-family:'Outfit',sans-serif; font-size:11px; color:#0f2e3d; cursor:pointer;
+  background:#fff; border:1px solid rgba(15,46,61,0.25); border-radius:5px; padding:2px 7px; margin:6px 4px 0 0; }
+.meas-panel svg { display:block; margin-top:6px; }
 .time-ctl { background:rgba(250,247,242,0.94); border:1px solid rgba(15,46,61,0.2); border-radius:8px;
   padding:5px 10px 3px; font-family:'Outfit',sans-serif; font-size:12px; color:#0f2e3d; min-width:210px; }
 .time-ctl input { width:100%; margin:2px 0 0; accent-color:#0f2e3d; }
@@ -1001,6 +1015,141 @@ chart.on('remove', () => { chartMsg.style.display = 'none'; chart.clearLayers();
 let chartTimer;
 map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); chartTimer = setTimeout(refreshChart, 350); } });
 
+/* ---------- Measure: route distance, bearings, and the depth profile under the line ----------
+   GMRT's ProfileServer returns a constant, so depths are sampled point by point from PointServer. */
+const NM = 1852;
+const measLayer = L.layerGroup();
+let measuring = false, measPts = [], measProfile = null;
+
+function haversineM(a, b) {
+  const R = 6371008.8, t = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * t, dLng = (b[1] - a[1]) * t;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * t) * Math.cos(b[0] * t) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+function bearing(a, b) {
+  const t = Math.PI / 180, y = Math.sin((b[1] - a[1]) * t) * Math.cos(b[0] * t);
+  const x = Math.cos(a[0] * t) * Math.sin(b[0] * t) - Math.sin(a[0] * t) * Math.cos(b[0] * t) * Math.cos((b[1] - a[1]) * t);
+  return (Math.atan2(y, x) / t + 360) % 360;
+}
+function interp(a, b, f) { return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+
+function routeLegs() {
+  const legs = [];
+  for (let i = 1; i < measPts.length; i++)
+    legs.push({ a: measPts[i - 1], b: measPts[i], m: haversineM(measPts[i - 1], measPts[i]), brg: bearing(measPts[i - 1], measPts[i]) });
+  return legs;
+}
+const totalM = () => routeLegs().reduce((t, l) => t + l.m, 0);
+
+function drawMeasure() {
+  measLayer.clearLayers();
+  if (!measPts.length) return;
+  if (measPts.length > 1) {
+    measLayer.addLayer(L.polyline(measPts, { color: '#0f2e3d', weight: 2.5, opacity: 0.9, dashArray: '6,4' }));
+    for (const l of routeLegs()) {
+      const mid = interp(l.a, l.b, 0.5);
+      const txt = (l.m / NM).toFixed(l.m / NM < 10 ? 2 : 1) + ' nm · ' + Math.round(l.brg).toString().padStart(3, '0') + '°';
+      measLayer.addLayer(L.marker(mid, { icon: L.divIcon({ className: 'leg-lab', html: txt, iconSize: null }), interactive: false }));
+    }
+  }
+  for (const p of measPts)
+    measLayer.addLayer(L.marker(p, { icon: L.divIcon({ className: 'meas-pt', iconSize: [9, 9] }), interactive: false }));
+  if (measProfile && measProfile.minPt)
+    measLayer.addLayer(L.circleMarker(measProfile.minPt, { radius: 6, color: '#c8102e', weight: 2, fillColor: '#fff', fillOpacity: 1 })
+      .bindTooltip('shallowest ' + Math.round(-measProfile.minVal) + ' m', { permanent: false }));
+  measPanel.refresh();
+}
+
+async function sampleProfile() {
+  const legs = routeLegs();
+  if (!legs.length) return;
+  const total = totalM(), N = 48, pts = [];
+  for (let i = 0; i <= N; i++) {
+    let d = total * i / N, acc = 0;
+    for (const l of legs) {
+      if (acc + l.m >= d || l === legs[legs.length - 1]) { pts.push(interp(l.a, l.b, l.m ? (d - acc) / l.m : 0)); break; }
+      acc += l.m;
+    }
+  }
+  measProfile = { loading: true }; measPanel.refresh();
+  const vals = await Promise.all(pts.map(async p => {
+    try {
+      const r = await fetch('https://www.gmrt.org/services/PointServer?longitude=' + p[1].toFixed(6) +
+        '&latitude=' + p[0].toFixed(6) + '&format=text');
+      const v = parseFloat((await r.text()).trim());
+      return isNaN(v) ? null : v;
+    } catch (e) { return null; }
+  }));
+  const sea = vals.map((v, i) => ({ v, p: pts[i] })).filter(o => o.v != null && o.v < 0);
+  const min = sea.length ? sea.reduce((m, o) => o.v > m.v ? m : o) : null;   // most negative = deepest; shallowest is the largest
+  const shallow = sea.length ? sea.reduce((m, o) => o.v < m.v ? m : o) : null;
+  measProfile = { vals, pts, total, minVal: shallow ? shallow.v : null, minPt: shallow ? shallow.p : null,
+                  deepest: min ? min.v : null };
+  drawMeasure();
+}
+
+function profileSvg(pr) {
+  const w = 228, h = 54, vals = pr.vals;
+  const depths = vals.map(v => v == null ? null : Math.max(0, -v));
+  const known = depths.filter(d => d != null);
+  if (!known.length) return '<div class="sub">no depth data along this line</div>';
+  const max = Math.max(...known, 1);
+  let d = '', started = false;
+  depths.forEach((dep, i) => {
+    const x = w * i / (depths.length - 1);
+    if (dep == null) { started = false; return; }
+    const y = 2 + (h - 4) * (dep / max);
+    d += (started ? 'L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1); started = true;
+  });
+  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+    '<rect x="0" y="0" width="' + w + '" height="' + h + '" fill="rgba(70,140,200,0.10)"/>' +
+    '<path d="' + d + '" fill="none" stroke="#1f5f8b" stroke-width="1.6"/>' +
+    '<text x="2" y="10" font-size="9" fill="#0f2e3d" opacity="0.7">0 m</text>' +
+    '<text x="2" y="' + (h - 3) + '" font-size="9" fill="#0f2e3d" opacity="0.7">' + Math.round(max) + ' m</text></svg>';
+}
+
+const measPanel = L.control({ position: 'bottomright' });
+measPanel.onAdd = () => { const d = L.DomUtil.create('div', 'meas-panel'); L.DomEvent.disableClickPropagation(d); measPanel._d = d; return d; };
+measPanel.refresh = () => {
+  const d = measPanel._d; if (!d) return;
+  if (measPts.length < 2) { d.innerHTML = '<div class="sub">click the map to drop points · double-click to finish</div>'; return; }
+  const t = totalM();
+  let html = '<div class="tot">' + (t / NM).toFixed(t / NM < 10 ? 2 : 1) + ' nm</div>' +
+    '<div class="sub">' + (t / 1000).toFixed(1) + ' km · ' + measPts.length + ' points</div>';
+  if (measProfile && measProfile.loading) html += '<div class="sub">sampling depth…</div>';
+  else if (measProfile) {
+    html += profileSvg(measProfile);
+    if (measProfile.minVal != null)
+      html += '<div class="sub">shallowest ' + Math.round(-measProfile.minVal) + ' m · deepest ' + Math.round(-measProfile.deepest) + ' m</div>';
+  } else html += '<div class="sub">double-click to finish and read depth</div>';
+  html += '<button id="m-undo">undo</button><button id="m-clear">clear</button>';
+  d.innerHTML = html;
+  const u = d.querySelector('#m-undo'), c = d.querySelector('#m-clear');
+  if (u) u.onclick = () => { measPts.pop(); measProfile = null; drawMeasure(); };
+  if (c) c.onclick = () => { measPts = []; measProfile = null; drawMeasure(); };
+};
+
+const rulerCtl = L.control({ position: 'topleft' });
+rulerCtl.onAdd = () => {
+  const d = L.DomUtil.create('div', 'leaflet-bar ruler-ctl');
+  d.innerHTML = '<a href="#" title="Measure distance and depth">&#8596;</a>';
+  L.DomEvent.on(d, 'click', e => { L.DomEvent.stop(e); toggleMeasure(); });
+  return d;
+};
+function toggleMeasure() {
+  measuring = !measuring;
+  const btn = document.querySelector('.ruler-ctl');
+  if (btn) btn.classList.toggle('on', measuring);
+  const el = map.getContainer();
+  el.style.cursor = measuring ? 'crosshair' : '';
+  if (measuring) { map.doubleClickZoom.disable(); measLayer.addTo(map); measPanel.addTo(map); measPanel.refresh(); }
+  else { map.doubleClickZoom.enable(); map.removeLayer(measLayer); if (measPanel._map) map.removeControl(measPanel); measPts = []; measProfile = null; }
+}
+map.on('click', e => { if (measuring) { measPts.push([e.latlng.lat, e.latlng.lng]); measProfile = null; drawMeasure(); } });
+map.on('dblclick', e => { if (measuring) { L.DomEvent.stop(e); sampleProfile(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && measuring) toggleMeasure(); });
+
 /* ---------- Wind and sea state: Open-Meteo (free, no key, CORS open) ----------
    One hourly fetch per view covers 3 days, so dragging the time slider is instant. */
 const FCST_HOURS = 72;
@@ -1160,6 +1309,7 @@ charts.on('remove', () => { chartsOn = false; for (const s of CHART_SOURCES) cha
 sat.addTo(map);
 charts.addTo(map);
 gpsCtl.addTo(map);
+rulerCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
   { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Rain radar (RainViewer)': radar, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
@@ -1186,7 +1336,7 @@ map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); wind.reload
 
 let busy = false;
 map.on('click', async e => {
-  if (busy) return;
+  if (busy || measuring) return;
   busy = true;
   const { lat, lng } = e.latlng;
   readout.textContent = lat.toFixed(4) + '°, ' + lng.toFixed(4) + '° · …';
