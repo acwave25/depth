@@ -714,6 +714,8 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .wind-arrow, .wave-arrow, .solar-cell { pointer-events:none; }
 .ship-mark svg { display:block; transform-origin:50% 50%; }
 .eonet-pin { font-size:15px; line-height:18px; text-align:center; }
+.nw-text { font-family:var(--font-mono); font-size:10.5px; white-space:pre-wrap; margin-top:5px;
+  max-height:220px; overflow-y:auto; }
 .solar-cell svg { display:block; overflow:visible; }
 .solar-lab { font-family:'Outfit',sans-serif; font-size:10.5px; font-weight:600; fill:#0f2e3d; }
 .wind-arrow svg, .wave-arrow svg { display:block; overflow:visible; }
@@ -809,7 +811,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1708,6 +1710,35 @@ async function loadEonet() {
 }
 eonet.on('add', loadEonet);
 
+/* Worldwide navigational warnings from the US mapping agency: wrecks, unlit buoys, firing
+   exercises, cable laying, drilling rigs. The source publishes positions inside the message text
+   and sends no cross-origin header, so a small proxy parses it into geometry and serves it here. */
+const navwarn = L.layerGroup();
+let nwLoaded = false;
+async function loadNavwarn() {
+  if (nwLoaded) return;
+  try {
+    const r = await fetch('https://navwarn-proxy.anthony-a1a.workers.dev/');
+    if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    let pts = 0;
+    for (const f of j.features) {
+      const q = f.properties;
+      const html = '<b>NAVAREA ' + q.area + ' · ' + q.id.split('/').slice(1).join('/') + '</b><br>' +
+        '<small>' + (q.issued || '') + '</small><pre class="nw-text">' +
+        q.text.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c])) + '</pre>';
+      for (const c of f.geometry.coordinates) {
+        navwarn.addLayer(L.circleMarker([c[1], c[0]], { radius: 5, color: '#c8102e', weight: 2,
+          fillColor: '#f8d958', fillOpacity: 0.9 }).bindPopup(html, { maxWidth: 320 }));
+        pts++;
+      }
+    }
+    chartMsg.textContent = j.features.length + ' navigational warnings, ' + pts + ' positions';
+    nwLoaded = true;
+  } catch (e) { chartMsg.textContent = 'navigational warnings unavailable'; }
+}
+navwarn.on('add', loadNavwarn);
+
 /* ---------- Global extremes: where the weather is doing something worth seeing ----------
    One scan of a curated worldwide point list; tap a row and the map flies there. */
 const EXT_TTL = 10 * 60 * 1000;
@@ -2113,7 +2144,7 @@ fsCtl.addTo(map);
 if (typeof LAND_POINTS !== 'undefined') extCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Solar load (Open-Meteo)': solar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards,
+  { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Solar load (Open-Meteo)': solar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
    'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
    'Shipping chokepoints (IMF)': chokepoints, 'Ship traffic (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
    'Sea surface temperature (NASA)': sst, 'Satellite, yesterday (NASA)': trueColor, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
