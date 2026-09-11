@@ -729,7 +729,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script>/* @preserve
@@ -818,6 +818,19 @@ const NoaaEnc = L.TileLayer.extend({
   }
 });
 const noaa = new NoaaEnc('', { minZoom: 6, maxZoom: 19, opacity: 0.95, attribution: 'NOAA ENC' });
+
+/* Spain: IHM publishes its ENCs as free WMS, one service per scale band (© Instituto Hidrográfico de la Marina, not for navigation) */
+const ihm = (n, minZoom, maxZoom) => L.tileLayer.wms('https://ideihm.covam.es/wms/cartaENCp' + n + '?', {
+  layers: 'ENC_ES' + n, format: 'image/png', transparent: true, version: '1.3.0', minZoom, maxZoom,
+  attribution: '© Instituto Hidrográfico de la Marina'
+});
+const spain = L.layerGroup([ihm(2, 6, 8), ihm(3, 9, 10), ihm(4, 11, 12), ihm(5, 13, 19)]);
+
+/* Portugal, Madeira, Azores, Cape Verde, Angola: IH Portugal ENC WMS (free, non-commercial, not for navigation) */
+const portugal = L.tileLayer.wms('https://enc.hidrografico.pt/wms?', {
+  layers: 'ENC', format: 'image/png', transparent: true, version: '1.3.0', minZoom: 6, maxZoom: 19,
+  CSVALUE: ',,,,,3', CSBOOL: '2183', attribution: '© Instituto Hidrográfico (PT)'
+});
 
 const seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
   attribution: 'OpenSeaMap', maxZoom: 18, maxNativeZoom: 18
@@ -940,10 +953,12 @@ map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); c
 sat.addTo(map);    // full coverage at every zoom; GMRT WMS renders on demand (7–9 s per tile) so it is optional
 dhn.addTo(map);
 noaa.addTo(map);
+spain.addTo(map);
+portugal.addTo(map);
 gpsCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official charts (DHN, Brazil)': dhn, 'US charts (NOAA ENC, live)': noaa, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+  { 'Official charts (DHN, Brazil)': dhn, 'US charts (NOAA ENC, live)': noaa, 'Spain (IHM, live)': spain, 'Portugal · Madeira · Azores · Cabo Verde (IH, live)': portugal, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
 
