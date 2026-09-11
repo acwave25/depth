@@ -1,0 +1,13 @@
+# Serves the chart page on maps.waveadvisors.uk. GitHub Pages keeps serving the same files at
+# acwave25.github.io/depth, so the two stay in step from one source: ./public is a copy of the
+# repo root, refreshed by deploy.sh.
+name = "maps"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+
+[[routes]]
+pattern = "maps.waveadvisors.uk"
+custom_domain = true

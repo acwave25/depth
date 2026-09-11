@@ -5,7 +5,7 @@
    No credential is involved. The upstream is public domain, and the edge cache means one upstream
    call serves every viewer for half an hour. */
 const SRC = 'https://msi.nga.mil/api/publications/broadcast-warn?output=json&status=A';
-const ALLOW = 'https://acwave25.github.io';
+const ALLOW = ['https://acwave25.github.io', 'https://maps.waveadvisors.uk'];   // both homes of the page
 const MAX_PER_MSG = 40;   // rig-position lists can carry sixty coordinates; that is a table, not a chart
 
 /* 19-23.0N 092-03.1W  and  1923.0N 09203.1W, the two layouts the messages actually use */
@@ -25,14 +25,15 @@ function positions(text) {
 
 export default {
   async fetch(req) {
-    if (req.method === 'OPTIONS') return new Response(null, { headers: cors() });
+    const origin = req.headers.get('origin') || '';
+    if (req.method === 'OPTIONS') return new Response(null, { headers: cors(origin) });
     try {
       const r = await fetch(SRC, {
         headers: { 'user-agent': 'WaveAdvisors-DepthMap/1.0 (+https://acwave25.github.io/depth/)',
                    'accept': 'application/json' },
         cf: { cacheTtl: 1800, cacheEverything: true }
       });
-      if (!r.ok) return new Response('upstream ' + r.status, { status: 502, headers: cors() });
+      if (!r.ok) return new Response('upstream ' + r.status, { status: 502, headers: cors(origin) });
       const list = (await r.json())['broadcast-warn'] || [];
       // one feature per message, its positions as a MultiPoint: repeating the message text under
       // every rig position tripled the payload for no extra information
@@ -53,15 +54,16 @@ export default {
         });
       }
       return new Response(JSON.stringify({ type: 'FeatureCollection', count: list.length, features }), {
-        headers: Object.assign({ 'content-type': 'application/json', 'cache-control': 'public, max-age=1800' }, cors())
+        headers: Object.assign({ 'content-type': 'application/json', 'cache-control': 'public, max-age=1800' }, cors(origin))
       });
     } catch (e) {
-      return new Response('proxy error', { status: 502, headers: cors() });
+      return new Response('proxy error', { status: 502, headers: cors(origin) });
     }
   }
 };
 
-const cors = () => ({
-  'access-control-allow-origin': ALLOW,
-  'access-control-allow-methods': 'GET, OPTIONS'
+const cors = origin => ({
+  'access-control-allow-origin': ALLOW.includes(origin) ? origin : ALLOW[0],
+  'access-control-allow-methods': 'GET, OPTIONS',
+  'vary': 'Origin'
 });
