@@ -858,6 +858,12 @@ const sat = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   attribution: 'Esri, Maxar, Earthstar Geographics', maxZoom: 19
 });
+// flat base under the charts: photography next to chart paper reads as a rendering fault,
+// and a chart sheet ends in a hard rectangle, so uncharted ground should look blank, not detailed
+const plain = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+  subdomains: 'abcd', maxZoom: 19, attribution: 'CARTO, OpenStreetMap'
+});
 const esriRef = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 13, opacity: 0.9
@@ -2235,19 +2241,32 @@ function updateCharts() {
   if (!chartsOn) chartMsg.textContent = '';
   else if (z < CHARTS_MIN_Z) chartMsg.textContent = 'zoom in for nautical charts';
   else if (!want.size) chartMsg.textContent = 'no free official charts published for these waters';
-  else chartMsg.textContent = CHART_SOURCES.filter(s => want.has(s.id)).map(s => s.label).join(' · ');
+  else {
+    let t = CHART_SOURCES.filter(s => want.has(s.id)).map(s => s.label).join(' · ');
+    if (z > 14) t += ' — enlarged past zoom 14 outside harbours; blank ground is uncharted';
+    chartMsg.textContent = t;
+  }
 }
 charts.on('add', () => { chartsOn = true; updateCharts(); });
 charts.on('remove', () => { chartsOn = false; for (const s of CHART_SOURCES) charts.removeLayer(s.layer); chartMsg.textContent = ''; });
 
-sat.addTo(map);
+plain.addTo(map);
 charts.addTo(map);
+let baseLocked = false;                      // a manual pick wins over the automatic swap
+map.on('baselayerchange', () => { baseLocked = true; });
+function syncBase() {
+  if (baseLocked) return;
+  const want = chartsOn ? plain : sat, drop = chartsOn ? sat : plain;
+  if (map.hasLayer(drop)) map.removeLayer(drop);
+  if (!map.hasLayer(want)) want.addTo(map);
+}
+charts.on('add remove', syncBase);
 gpsCtl.addTo(map);
 rulerCtl.addTo(map);
 fsCtl.addTo(map);
 if (typeof LAND_POINTS !== 'undefined') extCtl.addTo(map);
 L.control.layers(
-  { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
+  { 'Plain (CARTO)': plain, 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
   { 'Official nautical charts': charts, 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn,
    'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet,
    'Shipping chokepoints (IMF)': chokepoints, 'Ship traffic (Baltic, Norway)': ships, 'Rain radar (RainViewer)': radar,
