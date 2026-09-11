@@ -758,6 +758,14 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   background:#fff; color:#0f2e3d; border:1px solid rgba(15,46,61,0.25); border-radius:5px; padding:3px 0; }
 .time-ctl .modes button.on { background:#0f2e3d; color:#fff; border-color:#0f2e3d; }
 .time-ctl .hint { font-size:10px; opacity:0.55; margin-bottom:3px; }
+.time-ctl .summary { font-size:12px; line-height:1.35; margin:0 0 4px; }
+.time-ctl { max-width:260px; }
+.cond-card { pointer-events:none; }
+.cond-card .cc { transform:translate(-50%,-50%); font-family:var(--font-mono); font-size:10.5px;
+  line-height:1.35; white-space:nowrap; color:#0f2e3d; background:rgba(250,247,242,0.92);
+  border:1px solid rgba(15,46,61,0.18); border-left-width:3px; border-left-style:solid;
+  border-radius:4px; padding:2px 5px; }
+.cond-card .cc b { font-weight:600; }
 .time-ctl b { font-weight:500; }
 .gps-ctl a { font-size:18px; line-height:30px; }
 .gps-ctl.on a { background:#c8102e !important; color:#fff !important; }
@@ -1952,10 +1960,10 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && measuring)
 const FCST_HOURS = 72;
 let fcstIdx = 0, fcstTimes = null;
 
-function gridPoints(map, maxCols = 7) {
+function gridPoints(map, maxCols = 7, spacing = 150) {
   const b = map.getBounds(), size = map.getSize();
-  const cols = Math.max(3, Math.min(maxCols, Math.round(size.x / 150)));
-  const rows = Math.max(3, Math.min(6, Math.round(size.y / 150)));
+  const cols = Math.max(3, Math.min(maxCols, Math.round(size.x / spacing)));
+  const rows = Math.max(3, Math.min(6, Math.round(size.y / spacing)));
   const dLat = (b.getNorth() - b.getSouth()) / (rows + 1), dLng = (b.getEast() - b.getWest()) / (cols + 1);
   const pts = [];
   for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++)
@@ -2018,22 +2026,58 @@ function condIcon(d) {
       '" stroke-width="2"/>', Math.round(s) + ' W/m²', 64, 'solar-cell');
   }
 
-  /* Combined: wind is the arrow, swell the chevron below it, sun the ring around both. No text,
-     because three numbers per cell is what made this unreadable in the first place. */
-  let body = '';
-  if (s != null && s > 40)
-    body += '<circle r="20" fill="none" stroke="' + solarColor(s) + '" stroke-width="3" opacity="0.5"/>';
-  if (w) body += '<g transform="rotate(' + travel(w.deg) + ')">' + arrowPath(windColor(w.kn), 3) + '</g>';
-  if (v) {
-    const th = Math.max(1.6, Math.min(4.5, v.m * 1.4));
-    body += '<g transform="rotate(' + travel(v.deg) + ')"><path d="M-7,24 L0,30 L7,24" fill="none" stroke="#1f5f8b" ' +
-      'stroke-width="' + th.toFixed(1) + '" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/></g>';
-  }
-  return body ? svgIcon(body, '', 72, 'cond-cell') : null;
+  /* Combined view: a small card of plain numbers. Symbols looked tidy and told you nothing you
+     could read at a glance, which was the whole complaint about the old stacked layers. */
+  if (!w && !v && s == null) return null;
+  const lines = [];
+  if (w) lines.push('<b>' + Math.round(w.kn) + ' kn</b> ' + compass(w.deg));
+  if (v) lines.push(v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg));
+  if (s != null && s > 20) lines.push(Math.round(s) + ' W/m²');
+  return L.divIcon({ className: 'cond-card', iconSize: null,
+    html: '<div class="cc" style="border-left-color:' + (w ? windColor(w.kn) : '#7f8c8d') + '">' +
+      lines.join('<br>') + '</div>' });
 }
 
+/* One sentence describing the whole view, because a grid of numbers still is not a summary. */
+function conditionsSentence() {
+  if (!condData || !condData.length) return '';
+  const i = Math.min(fcstIdx, FCST_HOURS - 1);
+  const mid = a => a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : null;
+  const kn = [], wdir = [], m = [], per = [], sdir = [], sun = [];
+  for (const d of condData) {
+    if (d.wind && d.wind.speed[i] != null) { kn.push(d.wind.speed[i]); wdir.push(d.wind.dir[i]); }
+    if (d.wave && d.wave.h[i] != null && !(d.elev > 0)) {
+      m.push(d.wave.h[i]); per.push(d.wave.t[i]); sdir.push(d.wave.dir[i]);
+    }
+    if (d.sun && d.sun[i] != null) sun.push(d.sun[i]);
+  }
+  // average a bearing through its vector, or north-west of north averages to south
+  const meanDir = list => {
+    if (!list.length) return null;
+    let x = 0, y = 0;
+    for (const d of list) { x += Math.cos(d * Math.PI / 180); y += Math.sin(d * Math.PI / 180); }
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  };
+  const parts = [];
+  if (kn.length) {
+    const lo = Math.round(Math.min(...kn)), hi = Math.round(Math.max(...kn));
+    parts.push('wind ' + (hi - lo > 3 ? lo + ' to ' + hi : hi) + ' kn from the ' +
+      compassWord(meanDir(wdir)));
+  }
+  if (m.length) parts.push('swell ' + mid(m).toFixed(1) + ' m every ' + Math.round(mid(per)) +
+    ' s from the ' + compassWord(meanDir(sdir)));
+  if (sun.length) {
+    const peak = Math.round(Math.max(...sun));
+    parts.push(peak < 20 ? 'sun down' : 'sun ' + peak + ' W/m²');
+  }
+  return parts.length ? parts.join(', ') : '';
+}
+
+const COMPASS_WORD = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+const compassWord = d => d == null ? '' : COMPASS_WORD[Math.round(((d % 360) + 360) % 360 / 45) % 8];
+
 async function fetchConditions() {
-  const pts = gridPoints(map, condMode === 'all' ? 6 : 7);
+  const pts = gridPoints(map, condMode === 'all' ? 5 : 7, condMode === 'all' ? 200 : 150);
   const my = ++condToken;
   const lat = pts.map(p => p[0].toFixed(3)).join(','), lon = pts.map(p => p[1].toFixed(3)).join(',');
   const tail = '&forecast_days=3&timeformat=iso8601';
@@ -2100,6 +2144,7 @@ timeCtl.onAdd = () => {
   const d = L.DomUtil.create('div', 'time-ctl');
   d.innerHTML = '<div class="modes">' + COND_MODES.map(m =>
       '<button data-m="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
+    '<div class="summary" id="t-sum"></div>' +
     '<div class="hint" id="t-hint"></div>' +
     '<div><b id="t-label">now</b> <span id="t-when"></span></div>' +
     '<input id="t-slider" type="range" min="0" max="' + (FCST_HOURS - 1) + '" value="0" step="1">';
@@ -2124,9 +2169,11 @@ timeCtl.refresh = () => {
   lab.textContent = fcstIdx === 0 ? 'now' : '+' + fcstIdx + ' h';
   const sl = document.getElementById('t-slider');
   if (sl && +sl.value !== fcstIdx) sl.value = fcstIdx;
+  const sum = document.getElementById('t-sum');
+  if (sum) sum.textContent = conditionsSentence();
   const hint = document.getElementById('t-hint');
   if (hint) hint.textContent = condMode === 'all'
-    ? 'arrow wind · chevron swell · ring sun · tap for numbers'
+    ? 'every cell: wind, swell, sun · tap anywhere for the full readout'
     : condMode === 'wind' ? 'knots, arrow flies with the wind'
     : condMode === 'waves' ? 'metres and period, arrow with the swell' : 'watts per square metre';
   document.querySelectorAll('.modes button').forEach(b =>
