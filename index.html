@@ -720,8 +720,22 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .leg-lab { font-family:'Outfit',sans-serif; font-size:11px; font-weight:500; color:#0f2e3d;
   white-space:nowrap; transform:translate(-50%,-50%); background:rgba(250,247,242,0.92);
   border:1px solid rgba(15,46,61,0.25); border-radius:5px; padding:1px 5px; }
-.meas-pt { width:9px; height:9px; background:#fff; border:2px solid #0f2e3d; border-radius:50%;
-  transform:translate(-50%,-50%); }
+.meas-pt { width:30px; height:30px; touch-action:none; cursor:grab; }
+.meas-pt::after { content:''; position:absolute; left:50%; top:50%; width:15px; height:15px;
+  margin:-7.5px 0 0 -7.5px; background:#fff; border:3px solid #0f2e3d; border-radius:50%;
+  box-shadow:0 1px 4px rgba(0,0,0,0.35); }
+.meas-pt.end::after { border-color:#c8102e; }
+.leaflet-marker-draggable.meas-pt:active { cursor:grabbing; }
+.info-pop .leaflet-popup-content-wrapper { background:rgba(250,247,242,0.97); color:#0f2e3d;
+  border:1px solid rgba(15,46,61,0.2); border-radius:9px; box-shadow:0 2px 10px rgba(0,0,0,0.18); }
+.info-pop .leaflet-popup-content { margin:9px 11px; font-family:'Outfit',sans-serif; font-size:12px; width:200px !important; }
+.info-pop .leaflet-popup-tip { background:rgba(250,247,242,0.97); }
+.info-pop .hd { font-family:var(--font-mono); font-size:10.5px; opacity:0.6; margin-bottom:4px; }
+.info-pop .dep { font-size:17px; font-weight:500; color:var(--color-mint-deep); line-height:1.2; }
+.info-pop .row { display:flex; justify-content:space-between; gap:8px; padding:2px 0;
+  border-top:1px solid rgba(15,46,61,0.10); margin-top:3px; }
+.info-pop .row span:first-child { opacity:0.6; }
+.info-pop .row b { font-weight:500; }
 .meas-panel { background:rgba(250,247,242,0.96); border:1px solid rgba(15,46,61,0.2); border-radius:8px;
   padding:8px 10px; font-family:'Outfit',sans-serif; font-size:12px; color:#0f2e3d; width:250px; }
 .meas-panel .tot { font-size:15px; font-weight:500; }
@@ -751,7 +765,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 </nav>
 <div class="titlebar">
   <h1><span>Bathymetry</span><span class="title-slash">//</span><span class="title-lite">world charts · depth · wind · sea state</span></h1>
-  <div class="readout" id="readout">tap the sea for depth</div>
+  <div class="readout" id="readout">tap the map for depth, wind, temp</div>
 </div>
 <div id="map"></div>
 <footer>
@@ -1061,23 +1075,65 @@ function routeLegs() {
 }
 const totalM = () => routeLegs().reduce((t, l) => t + l.m, 0);
 
-function drawMeasure() {
+/* Garmin-style handles: the points are real draggable markers, so the line, the leg labels and
+   the total follow the finger live; the depth profile re-samples once the drag settles. */
+let measLine = null, measLabels = [], measMarkers = [], measMinMark = null, profTimer = null;
+
+function rebuildMeasure() {
   measLayer.clearLayers();
-  if (!measPts.length) return;
-  if (measPts.length > 1) {
-    measLayer.addLayer(L.polyline(measPts, { color: '#0f2e3d', weight: 2.5, opacity: 0.9, dashArray: '6,4' }));
-    for (const l of routeLegs()) {
-      const mid = interp(l.a, l.b, 0.5);
-      const txt = (l.m / NM).toFixed(l.m / NM < 10 ? 2 : 1) + ' nm · ' + Math.round(l.brg).toString().padStart(3, '0') + '°';
-      measLayer.addLayer(L.marker(mid, { icon: L.divIcon({ className: 'leg-lab', html: txt, iconSize: null }), interactive: false }));
+  measLine = null; measLabels = []; measMarkers = []; measMinMark = null;
+  if (!measPts.length) { measPanel.refresh(); return; }
+  measLine = L.polyline(measPts.map(p => p.slice()), { color: '#0f2e3d', weight: 3, opacity: 0.9, dashArray: '7,5' });
+  measLayer.addLayer(measLine);
+  measPts.forEach((p, i) => {
+    const end = i === 0 || i === measPts.length - 1;
+    const m = L.marker(p, { draggable: true, autoPan: true, keyboard: false, zIndexOffset: 1000,
+      icon: L.divIcon({ className: 'meas-pt' + (end ? ' end' : ''), iconSize: [30, 30], iconAnchor: [15, 15] }) });
+    m.on('drag', () => { const ll = m.getLatLng(); measPts[i] = [ll.lat, ll.lng]; measProfile = null; liveMeasure(); });
+    m.on('dragend', queueProfile);
+    measLayer.addLayer(m); measMarkers.push(m);
+  });
+  liveMeasure();
+}
+
+function liveMeasure() {
+  if (measLine) measLine.setLatLngs(measPts.map(p => p.slice()));
+  const legs = routeLegs();
+  while (measLabels.length > legs.length) measLayer.removeLayer(measLabels.pop());
+  legs.forEach((l, i) => {
+    const mid = interp(l.a, l.b, 0.5);
+    const nm = l.m / NM;
+    const txt = nm.toFixed(nm < 10 ? 2 : 1) + ' nm · ' + Math.round(l.brg).toString().padStart(3, '0') + '°';
+    if (!measLabels[i]) {
+      measLabels[i] = L.marker(mid, { icon: L.divIcon({ className: 'leg-lab', html: txt, iconSize: null }), interactive: false });
+      measLayer.addLayer(measLabels[i]);
+    } else {
+      measLabels[i].setLatLng(mid);
+      const el = measLabels[i].getElement();
+      if (el) el.innerHTML = txt;
     }
+  });
+  if (measMinMark) { measLayer.removeLayer(measMinMark); measMinMark = null; }
+  if (measProfile && measProfile.minPt) {
+    measMinMark = L.circleMarker(measProfile.minPt, { radius: 6, color: '#c8102e', weight: 2, fillColor: '#fff', fillOpacity: 1 })
+      .bindTooltip('shallowest ' + Math.round(-measProfile.minVal) + ' m');
+    measLayer.addLayer(measMinMark);
   }
-  for (const p of measPts)
-    measLayer.addLayer(L.marker(p, { icon: L.divIcon({ className: 'meas-pt', iconSize: [9, 9] }), interactive: false }));
-  if (measProfile && measProfile.minPt)
-    measLayer.addLayer(L.circleMarker(measProfile.minPt, { radius: 6, color: '#c8102e', weight: 2, fillColor: '#fff', fillOpacity: 1 })
-      .bindTooltip('shallowest ' + Math.round(-measProfile.minVal) + ' m', { permanent: false }));
   measPanel.refresh();
+}
+
+function queueProfile() {
+  clearTimeout(profTimer);
+  profTimer = setTimeout(sampleProfile, 450);
+}
+
+function seedMeasure() {
+  const b = map.getBounds(), c = map.getCenter();
+  const dx = (b.getEast() - b.getWest()) * 0.22, dy = (b.getNorth() - b.getSouth()) * 0.12;
+  measPts = [[c.lat + dy, c.lng - dx], [c.lat - dy, c.lng + dx]];
+  measProfile = null;
+  rebuildMeasure();
+  queueProfile();
 }
 
 async function sampleProfile() {
@@ -1105,7 +1161,7 @@ async function sampleProfile() {
   const shallow = sea.length ? sea.reduce((m, o) => o.v < m.v ? m : o) : null;
   measProfile = { vals, pts, total, minVal: shallow ? shallow.v : null, minPt: shallow ? shallow.p : null,
                   deepest: min ? min.v : null };
-  drawMeasure();
+  liveMeasure();
 }
 
 function profileSvg(pr) {
@@ -1143,7 +1199,7 @@ const measPanel = L.control({ position: 'bottomright' });
 measPanel.onAdd = () => { const d = L.DomUtil.create('div', 'meas-panel'); L.DomEvent.disableClickPropagation(d); measPanel._d = d; return d; };
 measPanel.refresh = () => {
   const d = measPanel._d; if (!d) return;
-  if (measPts.length < 2) { d.innerHTML = '<div class="sub">click the map to drop points · double-click to finish</div>'; return; }
+  if (measPts.length < 2) { d.innerHTML = '<div class="sub">drag the two handles to measure</div>'; return; }
   const t = totalM();
   let html = '<div class="tot">' + (t / NM).toFixed(t / NM < 10 ? 2 : 1) + ' nm</div>' +
     '<div class="sub">' + (t / 1000).toFixed(1) + ' km · ' + measPts.length + ' points</div>';
@@ -1152,12 +1208,12 @@ measPanel.refresh = () => {
     html += profileSvg(measProfile);
     if (measProfile.minVal != null)
       html += '<div class="sub">shallowest ' + Math.round(-measProfile.minVal) + ' m · deepest ' + Math.round(-measProfile.deepest) + ' m</div>';
-  } else html += '<div class="sub">double-click to finish and read depth</div>';
+  } else html += '<div class="sub">drag a handle · tap the map to add a leg</div>';
   html += '<button id="m-undo">undo</button><button id="m-clear">clear</button>';
   d.innerHTML = html;
   const u = d.querySelector('#m-undo'), c = d.querySelector('#m-clear');
-  if (u) u.onclick = () => { measPts.pop(); measProfile = null; drawMeasure(); };
-  if (c) c.onclick = () => { measPts = []; measProfile = null; drawMeasure(); };
+  if (u) u.onclick = () => { if (measPts.length > 2) { measPts.pop(); measProfile = null; rebuildMeasure(); queueProfile(); } };
+  if (c) c.onclick = seedMeasure;
 };
 
 const rulerCtl = L.control({ position: 'topleft' });
@@ -1173,11 +1229,24 @@ function toggleMeasure() {
   if (btn) btn.classList.toggle('on', measuring);
   const el = map.getContainer();
   el.style.cursor = measuring ? 'crosshair' : '';
-  if (measuring) { map.doubleClickZoom.disable(); measLayer.addTo(map); measPanel.addTo(map); measPanel.refresh(); }
-  else { map.doubleClickZoom.enable(); map.removeLayer(measLayer); if (measPanel._map) map.removeControl(measPanel); measPts = []; measProfile = null; }
+  if (measuring) {
+    map.doubleClickZoom.disable();
+    map.closePopup();
+    measLayer.addTo(map); measPanel.addTo(map);
+    seedMeasure();
+  } else {
+    clearTimeout(profTimer);
+    map.doubleClickZoom.enable(); map.removeLayer(measLayer);
+    if (measPanel._map) map.removeControl(measPanel);
+    measPts = []; measProfile = null; measLine = null; measLabels = []; measMarkers = []; measMinMark = null;
+  }
 }
-map.on('click', e => { if (measuring) { measPts.push([e.latlng.lat, e.latlng.lng]); measProfile = null; drawMeasure(); } });
-map.on('dblclick', e => { if (measuring) { L.DomEvent.stop(e); sampleProfile(); } });
+map.on('click', e => {
+  if (!measuring) return;
+  measPts.push([e.latlng.lat, e.latlng.lng]);   // extend the route; the two seeded handles stay draggable
+  measProfile = null;
+  rebuildMeasure(); queueProfile();
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && measuring) toggleMeasure(); });
 
 /* ---------- Wind and sea state: Open-Meteo (free, no key, CORS open) ----------
@@ -1367,25 +1436,89 @@ function onZoom() {
 map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); wind.reload(); waves.reload(); }); onZoom();
 
 
-let busy = false;
-map.on('click', async e => {
-  if (busy || measuring) return;
-  busy = true;
-  const { lat, lng } = e.latlng;
+/* ---------- Pointer: tap anywhere for depth, wind, air and sea temperature, and sea state ---------- */
+const COMPASS = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+const compass = d => COMPASS[Math.round(((d % 360) + 360) % 360 / 22.5) % 16];
+const infoPop = L.popup({ className: 'info-pop', maxWidth: 230, autoPan: true, closeButton: true });
+let infoSeq = 0;
+
+function infoHtml(lat, lng, st) {
+  const row = (k, v) => '<div class="row"><span>' + k + '</span><b>' + v + '</b></div>';
+  let h = '<div class="hd">' + Math.abs(lat).toFixed(4) + '° ' + (lat < 0 ? 'S' : 'N') + '  ' +
+          Math.abs(lng).toFixed(4) + '° ' + (lng < 0 ? 'W' : 'E') + '</div>';
+  h += '<div class="dep">' + st.depth + '</div>';
+  if (st.wind) h += row('Wind', st.wind);
+  if (st.gust) h += row('Gusts', st.gust);
+  if (st.air) h += row('Air', st.air);
+  if (st.sst) h += row('Sea temp', st.sst);
+  if (st.wave) h += row('Waves', st.wave);
+  if (st.pending) h += '<div class="row"><span>' + st.pending + '</span><b>…</b></div>';
+  return h;
+}
+
+async function showInfo(lat, lng) {
+  const seq = ++infoSeq;
+  const st = { depth: '…', pending: 'reading' };
+  infoPop.setLatLng([lat, lng]).setContent(infoHtml(lat, lng, st)).openOn(map);
   readout.textContent = lat.toFixed(4) + '°, ' + lng.toFixed(4) + '° · …';
-  try {
-    const r = await fetch('https://www.gmrt.org/services/PointServer?longitude=' +
-      lng.toFixed(6) + '&latitude=' + lat.toFixed(6) + '&format=text');
-    const v = parseFloat((await r.text()).trim());
-    if (isNaN(v)) throw 0;
-    readout.innerHTML = lat.toFixed(4) + '°, ' + lng.toFixed(4) + '° · ' +
-      (v < 0 ? '<span class="d">' + Math.round(-v).toLocaleString() + ' m deep</span>'
-             : Math.round(v).toLocaleString() + ' m elev');
-  } catch {
-    readout.textContent = lat.toFixed(4) + '°, ' + lng.toFixed(4) + '° · depth lookup unavailable';
-  }
-  busy = false;
-});
+  const paint = () => { if (seq === infoSeq) infoPop.setContent(infoHtml(lat, lng, st)); };
+
+  const depth = (async () => {
+    try {
+      const r = await fetch('https://www.gmrt.org/services/PointServer?longitude=' +
+        lng.toFixed(6) + '&latitude=' + lat.toFixed(6) + '&format=text');
+      const v = parseFloat((await r.text()).trim());
+      if (isNaN(v)) throw 0;
+      st.depth = v < 0 ? Math.round(-v).toLocaleString() + ' m deep' : Math.round(v).toLocaleString() + ' m elevation';
+      readout.innerHTML = lat.toFixed(4) + '°, ' + lng.toFixed(4) + '° · ' +
+        (v < 0 ? '<span class="d">' + Math.round(-v).toLocaleString() + ' m deep</span>'
+               : Math.round(v).toLocaleString() + ' m elev');
+    } catch (e) {
+      st.depth = 'depth unavailable';
+      readout.textContent = lat.toFixed(4) + '°, ' + lng.toFixed(4) + '° · depth lookup unavailable';
+    }
+    paint();
+  })();
+
+  const air = (async () => {
+    try {
+      const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat.toFixed(4) +
+        '&longitude=' + lng.toFixed(4) +
+        '&current=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn');
+      const c = (await r.json()).current;
+      if (c) {
+        if (c.wind_speed_10m != null)
+          st.wind = Math.round(c.wind_speed_10m) + ' kn ' + compass(c.wind_direction_10m) +
+                    ' (' + Math.round(c.wind_direction_10m) + '°)';
+        if (c.wind_gusts_10m != null) st.gust = Math.round(c.wind_gusts_10m) + ' kn';
+        if (c.temperature_2m != null) st.air = c.temperature_2m.toFixed(1) + ' °C';
+      }
+    } catch (e) {}
+    paint();
+  })();
+
+  const sea = (async () => {
+    try {
+      const r = await fetch('https://marine-api.open-meteo.com/v1/marine?latitude=' + lat.toFixed(4) +
+        '&longitude=' + lng.toFixed(4) +
+        '&current=wave_height,wave_direction,wave_period,sea_surface_temperature');
+      const c = (await r.json()).current;
+      if (c) {
+        if (c.sea_surface_temperature != null) st.sst = c.sea_surface_temperature.toFixed(1) + ' °C';
+        if (c.wave_height != null)
+          st.wave = c.wave_height.toFixed(1) + ' m ' + compass(c.wave_direction) +
+                    (c.wave_period != null ? ' · ' + Math.round(c.wave_period) + ' s' : '');
+      }
+    } catch (e) {}
+    paint();
+  })();
+
+  await Promise.all([depth, air, sea]);
+  st.pending = null;
+  paint();
+}
+
+map.on('click', e => { if (!measuring) showInfo(e.latlng.lat, e.latlng.lng); });
 </script>
 </body>
 </html>
