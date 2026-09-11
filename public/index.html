@@ -2234,7 +2234,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && measuring)
 /* ---------- Wind and sea state: Open-Meteo (free, no key, CORS open) ----------
    One hourly fetch per view covers 3 days, so dragging the time slider is instant. */
 const FCST_HOURS = 72;
-let fcstIdx = 0, fcstTimes = null;
+let fcstIdx = 0, fcstTimes = null, fcstJumped = false;
 
 const COND_MAX_Z = 11;          // Open-Meteo resolves ~11 km; closer in, every cell holds the same value
 
@@ -2369,7 +2369,15 @@ async function fetchConditions() {
   const pts = gridPoints(map, condMode === 'all' ? 4 : 7, condMode === 'all' ? 240 : 150);
   const my = ++condToken;
   const lat = pts.map(p => p[0].toFixed(3)).join(','), lon = pts.map(p => p[1].toFixed(3)).join(',');
-  const tail = '&forecast_days=3&timeformat=iso8601';
+  /* Anchor the series on the current hour. forecast_days alone starts it at 00:00 GMT, so index 0
+     was up to 24 h in the past, '+n h' counted from midnight GMT, and the night jump searched the
+     day already gone and landed on this morning rather than tomorrow. */
+  const p2 = n => String(n).padStart(2, '0');
+  const isoHour = t => t.getUTCFullYear() + '-' + p2(t.getUTCMonth() + 1) + '-' + p2(t.getUTCDate()) +
+    'T' + p2(t.getUTCHours()) + ':00';
+  const h0 = new Date(); h0.setUTCMinutes(0, 0, 0);
+  const tail = '&start_hour=' + isoHour(h0) + '&end_hour=' +
+    isoHour(new Date(h0.getTime() + (FCST_HOURS - 1) * 3600e3)) + '&timeformat=iso8601';
   try {
     const [air, sea] = await Promise.all([
       fetch('https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
@@ -2419,7 +2427,7 @@ function nightJump() {
   let best = fcstIdx, bv = -1;
   for (let i = fcstIdx; i < Math.min(fcstIdx + 24, FCST_HOURS); i++)
     if (sun[i] != null && sun[i] > bv) { bv = sun[i]; best = i; }
-  if (bv > 30) { fcstIdx = best; timeCtl.refresh(); }
+  if (bv > 30) { fcstIdx = best; fcstJumped = true; timeCtl.refresh(); }
 }
 
 conditions.on('add', fetchConditions);
@@ -2444,11 +2452,12 @@ timeCtl.onAdd = () => {
   L.DomEvent.disableScrollPropagation(d);
   setTimeout(() => {
     d.querySelector('#t-slider').addEventListener('input', e => {
-      fcstIdx = +e.target.value; drawConditions(); timeCtl.refresh();
+      fcstIdx = +e.target.value; fcstJumped = false; drawConditions(); timeCtl.refresh();
     });
     d.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', ev => {
       L.DomEvent.stop(ev);
       condMode = b.dataset.m;
+      fcstJumped = false;   // the jump explains the sun layer only
       timeCtl.refresh();
       fetchConditions();   // the combined view uses a coarser grid, so the points change with the mode
     }));
@@ -2458,7 +2467,7 @@ timeCtl.onAdd = () => {
 timeCtl.refresh = () => {
   const lab = document.getElementById('t-label'), when = document.getElementById('t-when');
   if (!lab) return;
-  lab.textContent = fcstIdx === 0 ? 'now' : '+' + fcstIdx + ' h';
+  lab.textContent = fcstJumped ? 'not now —' : fcstIdx === 0 ? 'now' : '+' + fcstIdx + ' h';
   const sl = document.getElementById('t-slider');
   if (sl && +sl.value !== fcstIdx) sl.value = fcstIdx;
   const sum = document.getElementById('t-sum');
@@ -2469,7 +2478,9 @@ timeCtl.refresh = () => {
     : condMode === 'all'
     ? 'every sea cell: wind, swell, sun, temperature · tap anywhere for the full readout'
     : condMode === 'wind' ? 'knots, arrow flies with the wind'
-    : condMode === 'waves' ? 'metres and period, arrow with the swell' : 'watts per square metre';
+    : condMode === 'waves' ? 'metres and period, arrow with the swell'
+    : fcstJumped ? 'watts per square metre — dark right now, so the clock is at the next daylight peak'
+    : 'watts per square metre';
   document.querySelectorAll('.modes button').forEach(b =>
     b.classList.toggle('on', b.dataset.m === condMode));
   if (fcstTimes && fcstTimes[fcstIdx]) {
