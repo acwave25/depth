@@ -2325,7 +2325,7 @@ function chartFocusNote() {
   const c = map.getCenter(), sc = dhnScale(c.lat, c.lng);
   if (!sc) return '';
   const over = map.getZoom() - sc.z;
-  if (over <= 0) return ' — ' + sc.px + ' m per pixel, full detail';
+  if (over <= 0) return ' — survey here is ' + sc.px + ' m per pixel, sharp to zoom ' + sc.z;
   return ' — finest survey here is ' + sc.px + ' m per pixel (zoom ' + sc.z + '), enlarged ' +
     Math.pow(2, over) + '×; no sharper chart is published';
 }
