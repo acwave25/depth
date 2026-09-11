@@ -711,6 +711,14 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
   /* Leaflet's layers icon is an external PNG that is not shipped with this single-file page */
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f2e3d' stroke-width='2' stroke-linejoin='round'><path d='M12 3 2 8l10 5 10-5-10-5z'/><path d='m2 12 10 5 10-5'/><path d='m2 16 10 5 10-5'/></svg>") !important;
   background-size:22px 22px !important; background-repeat:no-repeat; background-position:center; width:36px; height:36px; }
+.wind-arrow, .wave-arrow { pointer-events:none; }
+.wind-arrow svg, .wave-arrow svg { display:block; overflow:visible; }
+.wind-lab { font-family:'Outfit',sans-serif; font-size:10px; font-weight:500; fill:#0f2e3d;
+  paint-order:stroke; stroke:rgba(250,247,242,0.9); stroke-width:2.5px; stroke-linejoin:round; }
+.time-ctl { background:rgba(250,247,242,0.94); border:1px solid rgba(15,46,61,0.2); border-radius:8px;
+  padding:5px 10px 3px; font-family:'Outfit',sans-serif; font-size:12px; color:#0f2e3d; min-width:210px; }
+.time-ctl input { width:100%; margin:2px 0 0; accent-color:#0f2e3d; }
+.time-ctl b { font-weight:500; }
 .gps-ctl a { font-size:18px; line-height:30px; }
 .gps-ctl.on a { background:#c8102e !important; color:#fff !important; }
 .chart-msg { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); z-index:900;
@@ -733,7 +741,7 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · IHM España · IH Portugal · CHS Canada · AHO Australia · EMODnet · OpenSeaMap · wind, sea state Open-Meteo · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script>/* @preserve
@@ -813,15 +821,28 @@ function toggleGps() {
 }
 
 /* US waters: NOAA ENC Online, live-rendered official electronic charts (US coast, Gulf, Puerto Rico, USVI) */
-const NoaaEnc = L.TileLayer.extend({
+/* Several hydrographic offices publish live-rendered charts as ArcGIS export endpoints rather than
+   tile caches, so each Leaflet tile is turned into a Web Mercator bbox request. */
+const ArcGISExport = L.TileLayer.extend({
   getTileUrl(c) {
     const R = 20037508.342789244, n = Math.pow(2, c.z);
     const w = -R + 2 * R * c.x / n, e = -R + 2 * R * (c.x + 1) / n, nn = R - 2 * R * c.y / n, s = R - 2 * R * (c.y + 1) / n;
-    return 'https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/MapServer/export' +
-      '?bbox=' + [w, s, e, nn].join(',') + '&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image';
+    return this.options.service + '?bbox=' + [w, s, e, nn].join(',') +
+      '&bboxSR=3857&imageSR=3857&size=256,256&format=' + (this.options.imgFormat || 'png32') +
+      '&transparent=true&f=image';
   }
 });
-const noaa = new NoaaEnc('', { minZoom: 6, maxZoom: 19, opacity: 0.95, attribution: 'NOAA ENC' });
+const arcgisChart = (service, opts) => new ArcGISExport('', Object.assign(
+  { service, minZoom: 6, maxZoom: 19, opacity: 0.95 }, opts));
+
+const noaa = arcgisChart('https://gis.charttools.noaa.gov/arcgis/rest/services/MCS/ENCOnline/MapServer/exts/MaritimeChartService/MapServer/export',
+  { attribution: 'NOAA ENC' });
+/* Canada: CHS ENC Maritime Chart Service (free, not for navigation) */
+const chs = arcgisChart('https://egisp.dfo-mpo.gc.ca/arcgis/rest/services/chs/ENC_MaritimeChartService/MapServer/exts/MaritimeChartService/MapServer/export',
+  { attribution: '© Canadian Hydrographic Service' });
+/* Australia, PNG, Solomon Is., Timor-Leste: AHO ENC series (free, not for navigation) */
+const aho = arcgisChart('https://services.hydro.gov.au/site1/rest/services/Basemaps/AHOENCSeries/ImageServer/exportImage',
+  { imgFormat: 'png', attribution: '© Commonwealth of Australia (AHO)' });
 
 /* Spain: IHM publishes its ENCs as free WMS, one service per scale band (© Instituto Hidrográfico de la Marina, not for navigation) */
 const ihm = (n, minZoom, maxZoom) => L.tileLayer.wms('https://ideihm.covam.es/wms/cartaENCp' + n + '?', {
@@ -835,6 +856,32 @@ const portugal = L.tileLayer.wms('https://enc.hidrografico.pt/wms?', {
   layers: 'ENC', format: 'image/png', transparent: true, version: '1.3.0', minZoom: 6, maxZoom: 19,
   CSVALUE: ',,,,,3', CSBOOL: '2183', attribution: '© Instituto Hidrográfico (PT)'
 });
+
+/* EMODnet: free 100 m bathymetry for all European seas, far finer than GEBCO there */
+const emodnet = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
+  layers: 'emodnet:mean', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.8, maxZoom: 19,
+  attribution: 'EMODnet Bathymetry Consortium'
+});
+/* OpenSeaMap crowd-sourced depth contours — patchy, dense in popular sailing areas */
+const osmDepth = L.tileLayer.wms('https://depth.openseamap.org/geoserver/openseamap/wms', {
+  layers: 'openseamap:contour,openseamap:contour2', format: 'image/png', transparent: true,
+  version: '1.1.1', maxZoom: 19, attribution: 'OpenSeaMap (ODbL)'
+});
+
+/* Weather radar: RainViewer global mosaic, free and keyless. The frame path rotates, so the
+   layer asks the index for the newest frame and re-checks every ten minutes. */
+const radar = L.tileLayer('', { opacity: 0.75, maxZoom: 12, attribution: 'RainViewer' });
+let radarTimer = null;
+async function refreshRadar() {
+  try {
+    const j = await (await fetch('https://api.rainviewer.com/public/weather-maps.json')).json();
+    const frames = (j.radar && j.radar.past) || [];
+    if (!frames.length) return;
+    radar.setUrl(j.host + frames[frames.length - 1].path + '/256/{z}/{x}/{y}/4/1_1.png');
+  } catch (e) { /* leave the previous frame up */ }
+}
+radar.on('add', () => { refreshRadar(); radarTimer = setInterval(refreshRadar, 600000); });
+radar.on('remove', () => clearInterval(radarTimer));
 
 const seamarks = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
   attribution: 'OpenSeaMap', maxZoom: 18, maxNativeZoom: 18
@@ -954,6 +1001,125 @@ chart.on('remove', () => { chartMsg.style.display = 'none'; chart.clearLayers();
 let chartTimer;
 map.on('moveend', () => { if (map.hasLayer(chart)) { clearTimeout(chartTimer); chartTimer = setTimeout(refreshChart, 350); } });
 
+/* ---------- Wind and sea state: Open-Meteo (free, no key, CORS open) ----------
+   One hourly fetch per view covers 3 days, so dragging the time slider is instant. */
+const FCST_HOURS = 72;
+let fcstIdx = 0, fcstTimes = null;
+
+function gridPoints(map, maxCols = 7) {
+  const b = map.getBounds(), size = map.getSize();
+  const cols = Math.max(3, Math.min(maxCols, Math.round(size.x / 150)));
+  const rows = Math.max(3, Math.min(6, Math.round(size.y / 150)));
+  const dLat = (b.getNorth() - b.getSouth()) / (rows + 1), dLng = (b.getEast() - b.getWest()) / (cols + 1);
+  const pts = [];
+  for (let r = 1; r <= rows; r++) for (let c = 1; c <= cols; c++)
+    pts.push([b.getSouth() + r * dLat, b.getWest() + c * dLng]);
+  return pts;
+}
+
+const WIND_COLORS = [[5,'#7c8c99'],[10,'#2f7fb8'],[15,'#22a06b'],[20,'#c9a227'],[25,'#d9772b'],[33,'#c8102e'],[999,'#8b1a4a']];
+const windColor = kn => WIND_COLORS.find(c => kn < c[0])[1];
+
+function arrowIcon(deg, color, label, cls) {
+  // arrow flies with the flow; met direction is where it comes FROM, so rotate by +180
+  const rot = (deg + 180) % 360;
+  return L.divIcon({ className: cls, iconSize: null, html:
+    '<svg width="54" height="54" viewBox="-27 -27 54 54">' +
+      '<g transform="rotate(' + rot + ')">' +
+        '<path d="M0,-13 L0,11" stroke="' + color + '" stroke-width="2.6" stroke-linecap="round"/>' +
+        '<path d="M-5.5,5 L0,12.5 L5.5,5" fill="none" stroke="' + color + '" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</g>' +
+      '<text class="wind-lab" x="0" y="-15" text-anchor="middle">' + label + '</text>' +
+    '</svg>' });
+}
+
+function makeFlowLayer({ url, params, read, render, cls }) {
+  const group = L.layerGroup();
+  let data = null, token = 0, timer = null;
+
+  async function fetchData() {
+    const pts = gridPoints(map);
+    const my = ++token;
+    const q = url + '?latitude=' + pts.map(p => p[0].toFixed(3)).join(',') +
+      '&longitude=' + pts.map(p => p[1].toFixed(3)).join(',') + '&' + params +
+      '&forecast_days=3&timeformat=iso8601';
+    try {
+      const r = await fetch(q);
+      if (!r.ok) throw new Error(r.status);
+      let j = await r.json();
+      if (!Array.isArray(j)) j = [j];
+      if (my !== token) return;
+      data = j.map((d, i) => ({ ll: pts[i], h: d.hourly }));
+      fcstTimes = j[0] && j[0].hourly ? j[0].hourly.time : null;
+      draw();
+      timeCtl.refresh();
+    } catch (e) { if (my === token) { group.clearLayers(); } }
+  }
+
+  function draw() {
+    group.clearLayers();
+    if (!data) return;
+    for (const d of data) {
+      const v = read(d.h, Math.min(fcstIdx, FCST_HOURS - 1));
+      if (!v) continue;
+      group.addLayer(L.marker(d.ll, { icon: render(v, cls), interactive: false, keyboard: false }));
+    }
+  }
+
+  group.on('add', () => { fetchData(); });
+  group.on('remove', () => { token++; group.clearLayers(); });
+  group.redraw = draw;
+  group.reload = () => { clearTimeout(timer); timer = setTimeout(() => { if (map.hasLayer(group)) fetchData(); }, 500); };
+  return group;
+}
+
+const wind = makeFlowLayer({
+  url: 'https://api.open-meteo.com/v1/forecast',
+  params: 'hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=kn',
+  read: (h, i) => h && h.wind_speed_10m[i] != null ? { kn: h.wind_speed_10m[i], deg: h.wind_direction_10m[i] } : null,
+  render: (v, cls) => arrowIcon(v.deg, windColor(v.kn), Math.round(v.kn) + ' kn', cls),
+  cls: 'wind-arrow'
+});
+
+const waves = makeFlowLayer({
+  url: 'https://marine-api.open-meteo.com/v1/marine',
+  params: 'hourly=wave_height,wave_direction,wave_period',
+  read: (h, i) => h && h.wave_height[i] != null ? { m: h.wave_height[i], deg: h.wave_direction[i], t: h.wave_period[i] } : null,
+  render: (v, cls) => arrowIcon(v.deg, windColor(v.m * 6), v.m.toFixed(1) + ' m' + (v.t ? ' / ' + Math.round(v.t) + 's' : ''), cls),
+  cls: 'wave-arrow'
+});
+
+/* forecast time slider — appears only while wind or waves is on */
+const timeCtl = L.control({ position: 'bottomleft' });
+timeCtl.onAdd = () => {
+  const d = L.DomUtil.create('div', 'time-ctl');
+  d.innerHTML = '<div><b id="t-label">now</b> <span id="t-when"></span></div>' +
+                '<input id="t-slider" type="range" min="0" max="' + (FCST_HOURS - 1) + '" value="0" step="1">';
+  L.DomEvent.disableClickPropagation(d);
+  setTimeout(() => {
+    d.querySelector('#t-slider').addEventListener('input', e => {
+      fcstIdx = +e.target.value; wind.redraw(); waves.redraw(); timeCtl.refresh();
+    });
+  }, 0);
+  return d;
+};
+timeCtl.refresh = () => {
+  const lab = document.getElementById('t-label'), when = document.getElementById('t-when');
+  if (!lab) return;
+  lab.textContent = fcstIdx === 0 ? 'now' : '+' + fcstIdx + ' h';
+  if (fcstTimes && fcstTimes[fcstIdx]) {
+    const t = new Date(fcstTimes[fcstIdx] + 'Z');
+    when.textContent = t.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  } else when.textContent = '';
+};
+function syncTimeCtl() {
+  const on = map.hasLayer(wind) || map.hasLayer(waves);
+  if (on && !timeCtl._map) timeCtl.addTo(map);
+  else if (!on && timeCtl._map) map.removeControl(timeCtl);
+  if (on) timeCtl.refresh();
+}
+for (const l of [wind, waves]) { l.on('add', syncTimeCtl); l.on('remove', syncTimeCtl); }
+
 /* ---------- Chart quilt: one toggle, the right national service picked by where you are ----------
    Each source declares the water it covers. Only sources overlapping the view are attached, so
    panning to Japan does not keep Norway's server busy, and the layer menu stays one line. */
@@ -961,6 +1127,8 @@ const CHART_SOURCES = [   // areas: one or more [[S,W],[N,E]] boxes of water the
   { id: 'br', label: 'Brazil — DHN', layer: dhn, areas: [[[-35.5, -70.0], [6.0, -25.0]]] },
   { id: 'us', label: 'USA — NOAA ENC', layer: noaa, areas: [[[14.0, -130.0], [50.0, -60.0]], [[50.0, -180.0], [72.0, -125.0]], [[17.5, -68.0], [19.0, -64.0]]] },
   { id: 'es', label: 'Spain — IHM', layer: spain, areas: [[[35.0, -10.5], [44.5, 4.5]], [[27.0, -19.0], [29.5, -13.0]]] },
+  { id: 'ca', label: 'Canada — CHS', layer: chs, areas: [[[41.5, -141.5], [83.5, -52.0]]] },
+  { id: 'au', label: 'Australia · PNG · Solomons — AHO', layer: aho, areas: [[[-45.0, 108.0], [-8.0, 156.5]]] },
   { id: 'pt', label: 'Portugal — IH', layer: portugal, areas: [[[36.5, -10.5], [42.5, -6.0]], [[36.5, -31.5], [40.0, -24.5]], [[32.3, -17.5], [33.2, -16.2]], [[14.5, -25.5], [17.3, -22.5]], [[-18.5, 11.0], [-5.0, 14.0]]] },
 ];
 const CHARTS_MIN_Z = 6;
@@ -993,7 +1161,7 @@ charts.addTo(map);
 gpsCtl.addTo(map);
 L.control.layers(
   { 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco },
-  { 'Official nautical charts': charts, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
+  { 'Official nautical charts': charts, 'Wind (Open-Meteo)': wind, 'Waves &amp; swell (Open-Meteo)': waves, 'Rain radar (RainViewer)': radar, 'Depth, Europe (EMODnet)': emodnet, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef },
   { collapsed: true }   // tap the layers icon to open
 ).addTo(map);
 
@@ -1012,7 +1180,7 @@ function onZoom() {
   const z = map.getZoom();
   if (z >= 8) { if (!map.hasLayer(placesLayer)) placesLayer.addTo(map); } else map.removeLayer(placesLayer);
 }
-map.on('zoomend', onZoom); map.on('moveend', updateCharts); onZoom();
+map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); wind.reload(); waves.reload(); }); onZoom();
 
 
 let busy = false;
