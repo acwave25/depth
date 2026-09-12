@@ -696,6 +696,21 @@ h1 { font-weight:500; letter-spacing:-0.02em; font-size:1.15rem; }
 .presets { display:flex; gap:6px; padding:0 1.5rem 0.55rem; flex-shrink:0; overflow-x:auto; scrollbar-width:none; }
 .presets::-webkit-scrollbar { display:none; }
 .presets .lyr-tab { flex:none; white-space:nowrap; }
+/* Fly me to: a place search and a region picker at the head of the preset row, styled as pills */
+.flyto { display:flex; flex:none; align-items:center; gap:6px; padding-right:8px; margin-right:2px; border-right:1px solid rgba(15,46,61,0.2); }
+.flyto input, .flyto select { font:500 12px/1 'Outfit',sans-serif; letter-spacing:.03em; color:var(--color-navy); background:#fff;
+  border:1px solid rgba(15,46,61,0.2); border-radius:999px; height:25px; padding:0 10px; outline:none; -webkit-appearance:none; appearance:none; }
+.flyto input { width:220px; }
+.flyto input:focus { border-color:var(--color-navy); }
+.flyto input::placeholder { color:rgba(15,46,61,0.45); }
+.flyto select { cursor:pointer; padding-right:24px; background-repeat:no-repeat; background-position:right 9px center; background-size:9px 6px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%230f2e3d' stroke-width='1.5'/></svg>"); }
+/* the row scrolls sideways, so the list hangs off <body> at a fixed position rather than inside it, where it would be clipped */
+.fly-list { position:fixed; z-index:5000; min-width:220px; max-width:min(360px, calc(100vw - 16px)); background:#fff; color:var(--color-navy);
+  border:1px solid rgba(15,46,61,0.2); border-radius:10px; box-shadow:0 4px 16px rgba(15,46,61,0.18); padding:4px 0; font:400 12.5px/1.3 'Outfit',sans-serif; }
+.fly-list div { padding:6px 12px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fly-list div.on, .fly-list div:hover { background:rgba(135,212,206,0.28); }
+.fly-list div.none, .fly-list div.none:hover { color:#8497a0; cursor:default; background:none; }
 body.immersive .presets { display:none; }
 #map { flex:1; margin:0 1.5rem; border:1px solid rgba(15,46,61,0.12);
   border-radius:16px; overflow:hidden; min-height:0; background:#dfeef0; }
@@ -841,6 +856,8 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
   .readout { min-width:0; flex:1; font-size:11px; padding:0.3rem 0.5rem; }
   #map { margin:0 0.5rem; border-radius:10px; }
   .presets { padding:0 0.5rem 0.4rem; }
+  .flyto input, .flyto select { font-size:16px; height:28px; }   /* under 16 px iOS zooms the page on focus */
+  .flyto input { width:150px; }
   footer { padding:0.4rem 0.9rem 0.5rem; }
   footer .src:last-child { display:none; }
   .src { font-size:10px; }
@@ -861,7 +878,12 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
   <h1><span>Bathymetry</span><span class="title-slash">//</span><span class="title-lite">world charts · depth · wind · sea state</span></h1>
   <div class="readout" id="readout">tap the map for depth, wind, temp</div>
 </div>
-<div class="presets" id="presets"></div>
+<div class="presets" id="presets">
+  <div class="flyto">
+    <input id="fly-q" type="text" placeholder="Fly me to…" aria-label="Fly me to a place" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    <select id="fly-region" aria-label="Region"><option value="" disabled selected>Region…</option></select>
+  </div>
+</div>
 <div id="map"></div>
 <footer>
   <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · power plants WRI GPPD (CC BY 4.0) · ocean layers via Resource Watch (WRI) · mangroves Global Mangrove Watch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
@@ -2954,6 +2976,116 @@ PRESETS.forEach(([name, base, layers, zoom]) => {
 });
 // a manual tick in the panel means the view is no longer the preset
 for (const l of overlays) l.on('add remove', () => { if (!presetting) clearPreset(); });
+
+/* ---------- Fly me to: a place search and a region picker at the head of the preset row ----------
+   Open-Meteo's geocoder is free, keyless and CORS-open like its forecast API. A search moves the
+   centre and nothing else: zoom and every layer stay as they are, so it never undoes a preset. */
+const flyInput = document.getElementById('fly-q');
+const flyList = document.createElement('div');
+flyList.className = 'fly-list'; flyList.hidden = true;
+document.body.appendChild(flyList);
+let flyHits = [], flyIdx = -1, flySeq = 0, flyTimer = null, flyPickFirst = false;
+
+const flyLabel = r => [r.name, r.admin1, r.country].filter(Boolean).join(', ');
+function flyClose() { flyList.hidden = true; flyHits = []; flyIdx = -1; flyPickFirst = false; }
+function flyMark() { Array.from(flyList.children).forEach((d, i) => d.classList.toggle('on', i === flyIdx)); }
+function flyRender() {
+  flyList.textContent = '';
+  if (!flyHits.length) {
+    const d = document.createElement('div'); d.className = 'none'; d.textContent = 'nothing found';
+    flyList.appendChild(d);
+  }
+  for (const h of flyHits) {
+    const d = document.createElement('div'); d.textContent = flyLabel(h);
+    d.addEventListener('click', () => flySelect(h));
+    flyList.appendChild(d);
+  }
+  flyMark();
+  flyList.hidden = false;
+  const r = flyInput.getBoundingClientRect();
+  flyList.style.top = (r.bottom + 4) + 'px';
+  flyList.style.left = Math.max(8, Math.min(r.left, window.innerWidth - flyList.offsetWidth - 8)) + 'px';
+}
+function flySelect(h) {
+  flyInput.value = h.name;
+  flyClose();
+  flyInput.blur();   // on a phone this drops the keyboard, so the flight is visible
+  map.flyTo([h.latitude, h.longitude], map.getZoom());
+}
+async function flySearch(q) {
+  const seq = ++flySeq;
+  let hits = null;
+  try {
+    const r = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) +
+      '&count=6&language=en&format=json');
+    if (r.ok) hits = (await r.json()).results || [];   // an empty answer carries no results key at all
+  } catch (e) { /* network trouble: the list simply does not change */ }
+  if (seq !== flySeq || !hits) return;   // a slower answer to an older query must not overwrite the newer one
+  flyHits = hits; flyIdx = -1;
+  if (flyPickFirst) {   // Enter was pressed before the answer arrived
+    flyPickFirst = false;
+    if (hits.length) return flySelect(hits[0]);
+  }
+  if (document.activeElement === flyInput) flyRender();
+}
+function flyQueue(now) {
+  clearTimeout(flyTimer);
+  const q = flyInput.value.trim();
+  if (q.length < 2) { flySeq++; flyClose(); return; }
+  flyTimer = setTimeout(() => flySearch(q), now ? 0 : 250);
+}
+flyInput.addEventListener('input', () => flyQueue(false));
+flyInput.addEventListener('focus', () => flyQueue(false));
+flyInput.addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (!flyHits.length) return;
+    e.preventDefault();
+    flyIdx = (flyIdx + (e.key === 'ArrowDown' ? 1 : -1) + flyHits.length) % flyHits.length;
+    flyMark();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (flyHits.length) flySelect(flyHits[Math.max(0, flyIdx)]);
+    else if (flyInput.value.trim().length >= 2) { flyPickFirst = true; flyQueue(true); }
+  } else if (e.key === 'Escape' && !flyList.hidden) {
+    e.stopPropagation();   // else the same key also leaves measure or full-screen mode
+    flyClose();
+  }
+});
+// a tap anywhere else closes the list; the row scrolling under it would leave it hanging in space
+document.addEventListener('pointerdown', e => {
+  if (!flyList.hidden && e.target !== flyInput && !flyList.contains(e.target)) flyClose();
+}, true);
+presetBar.addEventListener('scroll', flyClose);
+
+/* Regions as [south, west, north, east]. The picker springs back to its placeholder after each
+   choice, so the same region can be picked again. Layers are left alone here too. */
+const REGIONS = [
+  ['Brazil north-east', [-18, -48, -1, -32]], ['Brazil', [-34, -74, 5.5, -34]], ['South America', [-56, -82, 13, -34]],
+  ['Caribbean & Central America', [7, -92, 27, -59]], ['North America', [7, -170, 72, -50]],
+  ['Europe', [35, -12, 71, 32]], ['Mediterranean', [30, -6, 46, 37]], ['Baltic & North Sea', [50, -5, 66, 31]],
+  ['Africa west coast', [-35, -20, 37, 15]], ['Africa east coast & Red Sea', [-35, 12, 31, 60]],
+  ['Middle East & Gulf', [12, 32, 42, 63]], ['Indian Ocean', [-40, 40, 25, 100]],
+  ['South-east Asia', [-11, 92, 24, 141]], ['East Asia', [18, 100, 50, 150]], ['Oceania', [-48, 110, 0, 180]],
+  ['Arctic', [66, -180, 90, 180]], ['Antarctica', [-90, -180, -60, 180]],
+  ['Atlantic', [-50, -70, 65, 10]], ['Pacific', [-50, 120, 60, 290]], ['Whole world', [-60, -180, 75, 180]],
+];
+const regionSel = document.getElementById('fly-region');
+REGIONS.forEach((r, i) => { const o = document.createElement('option'); o.value = i; o.textContent = r[0]; regionSel.appendChild(o); });
+regionSel.onchange = () => {
+  const r = REGIONS[+regionSel.value];
+  regionSel.selectedIndex = 0;
+  if (!r) return;
+  const [s, w, n, e] = r[1];
+  /* The Pacific box runs past 180°. Leaflet fits it as asked, since its projection is linear in
+     longitude and the tiles wrap, but the centre would then sit at 205° E, where the forecast
+     calls are refused and no marker is drawn; once the flight has landed the view is wrapped back
+     by a whole world, which changes nothing on screen. */
+  map.once('moveend', () => setTimeout(() => {
+    const c = map.getCenter();
+    if (c.lng > 180 || c.lng < -180) map.setView(c.wrap(), map.getZoom(), { animate: false });
+  }, 0));
+  map.fitBounds([[s, w], [n, e]], { animate: true });
+};
 /* Every layer has a zoom window; the number makes the panel's ranges and the notes meaningful. */
 const zoomCtl = L.control({ position: 'bottomright' });
 zoomCtl.onAdd = () => {
