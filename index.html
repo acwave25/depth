@@ -692,6 +692,11 @@ h1 { font-weight:500; letter-spacing:-0.02em; font-size:1.15rem; }
 .readout { font-family:var(--font-mono); font-size:12px; background:var(--color-white);
   border:1px solid rgba(15,46,61,0.12); border-radius:8px; padding:0.35rem 0.7rem; min-width:14rem; text-align:right; }
 .readout .d { color:var(--color-mint-deep); }
+/* Preset views: one scrolling row under the title so it never wraps on a phone; the pills are the panel's tabs */
+.presets { display:flex; gap:6px; padding:0 1.5rem 0.55rem; flex-shrink:0; overflow-x:auto; scrollbar-width:none; }
+.presets::-webkit-scrollbar { display:none; }
+.presets .lyr-tab { flex:none; white-space:nowrap; }
+body.immersive .presets { display:none; }
 #map { flex:1; margin:0 1.5rem; border:1px solid rgba(15,46,61,0.12);
   border-radius:16px; overflow:hidden; min-height:0; background:#dfeef0; }
 footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items:center;
@@ -835,6 +840,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
   .title-lite { display:none; }
   .readout { min-width:0; flex:1; font-size:11px; padding:0.3rem 0.5rem; }
   #map { margin:0 0.5rem; border-radius:10px; }
+  .presets { padding:0 0.5rem 0.4rem; }
   footer { padding:0.4rem 0.9rem 0.5rem; }
   footer .src:last-child { display:none; }
   .src { font-size:10px; }
@@ -855,6 +861,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
   <h1><span>Bathymetry</span><span class="title-slash">//</span><span class="title-lite">world charts · depth · wind · sea state</span></h1>
   <div class="readout" id="readout">tap the map for depth, wind, temp</div>
 </div>
+<div class="presets" id="presets"></div>
 <div id="map"></div>
 <footer>
   <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · power plants WRI GPPD (CC BY 4.0) · ocean layers via Resource Watch (WRI) · mangroves Global Mangrove Watch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
@@ -2896,6 +2903,41 @@ lyrCtl.onAdd = () => {
   return d;
 };
 lyrCtl.addTo(map);
+/* Preset views: one tap sets the base, the overlays and a zoom where they all draw. Anything a
+   preset does not name goes off, so the map reads as one theme rather than an accumulation. */
+const PRESETS = [
+  ['Navigation', plain, [charts, seamarks, live, tides, navwarn, wrecks], 12],
+  ['Weather', sat, [conditions, radar, cyclones, alerts], 7],
+  ['Sea', sat, [sstAnom, chloro, reefs, mangroves, mpa], 6],
+  ['Hazards', plain, [hazards, navwarn, quakes, eonet, cycloneHist, coastFlood], 5],
+  ['Traffic', plain, [live, ships, chokepoints, ports], 8],
+  ['Infrastructure', plain, [...Object.values(LAYER_GROUPS.find(g => g[0] === 'Infrastructure')[2]), wrecks], 6],
+  ['Clear', null, [], null],   // keeps the base, no zoom change
+];
+const overlays = LAYER_GROUPS.filter(g => g[1] === 'check').flatMap(g => Object.values(g[2]));
+const bases = Object.values(LAYER_GROUPS[0][2]);
+const presetBar = document.getElementById('presets');
+const clearPreset = () => presetBar.querySelectorAll('.on').forEach(el => el.classList.remove('on'));
+let presetting = false;   // the preset's own add/remove events must not clear its highlight
+PRESETS.forEach(([name, base, layers, zoom]) => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'lyr-tab'; b.textContent = name;
+  b.onclick = () => {
+    presetting = true;
+    for (const l of overlays) if (!layers.includes(l) && map.hasLayer(l)) map.removeLayer(l);
+    for (const l of layers) if (!map.hasLayer(l)) l.addTo(map);
+    if (base) {   // same steps as the panel's radio, so the charts layer stops auto-swapping the base
+      for (const l of bases) if (l !== base && map.hasLayer(l)) map.removeLayer(l);
+      if (!map.hasLayer(base)) base.addTo(map);
+      map.fire('baselayerchange', { layer: base });
+    }
+    presetting = false;
+    clearPreset();
+    if (zoom) { b.classList.add('on'); map.setZoom(Math.min(zoom, map.getMaxZoom())); }
+  };
+  presetBar.appendChild(b);
+});
+// a manual tick in the panel means the view is no longer the preset
+for (const l of overlays) l.on('add remove', () => { if (!presetting) clearPreset(); });
 /* Every layer has a zoom window; the number makes the panel's ranges and the notes meaningful. */
 const zoomCtl = L.control({ position: 'bottomright' });
 zoomCtl.onAdd = () => {
