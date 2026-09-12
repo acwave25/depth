@@ -717,6 +717,10 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .lyr-list label.off em { color:#c8102e; }
 .lyr-close { margin-left:auto; font:400 18px/1 'Outfit',sans-serif; width:28px; height:26px; border:0; border-radius:6px; background:transparent; color:var(--color-navy); cursor:pointer; }
 .lyr-close:hover { background:rgba(15,46,61,0.08); }
+.ship-key { display:flex; flex-wrap:wrap; gap:3px 8px; max-width:250px; font:400 10px/1.2 'Outfit',sans-serif; color:#3d5260; background:rgba(255,255,255,0.92); border:1px solid rgba(15,46,61,0.15); border-radius:8px; padding:6px 8px; margin:0 10px 6px 0; }
+.ship-key span { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+.ship-key i { display:inline-block; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid #7f8c8d; }
+.ship-key em { font-style:normal; color:#8497a0; width:100%; }
 .zoom-pill { background:rgba(255,255,255,0.9); border:1px solid rgba(15,46,61,0.15); border-radius:999px; margin:0 10px 6px 0; }
 .zoom-pill select { font:500 11px/1 'Outfit',sans-serif; letter-spacing:.04em; color:var(--color-navy); background:transparent; border:0; padding:5px 9px; cursor:pointer; -webkit-appearance:none; appearance:none; }
 .leaflet-bar a { color:var(--color-navy) !important; }
@@ -2896,6 +2900,20 @@ zoomCtl.onAdd = () => {
   return d;
 };
 zoomCtl.addTo(map);
+/* Ship colours are the AIS vessel type; the key shows while any traffic layer is on. */
+const SHIP_KEY = [[85, 'tanker'], [75, 'cargo'], [65, 'passenger'], [45, 'high speed'], [30, 'fishing'], [36, 'sail / pleasure'], [55, 'service'], [0, 'other']];
+const shipKeyCtl = L.control({ position: 'bottomright' });
+shipKeyCtl.onAdd = () => {
+  const d = L.DomUtil.create('div', 'ship-key');
+  d.innerHTML = SHIP_KEY.map(([t, n]) => '<span><i style="border-bottom-color:' + SHIP_TYPE(t)[0] + '"></i>' + n + '</span>').join('') + '<em>▲ points along heading</em>';
+  return d;
+};
+function syncShipKey() {
+  const on = map.hasLayer(live) || map.hasLayer(ships);
+  if (on && !shipKeyCtl._map) shipKeyCtl.addTo(map);
+  else if (!on && shipKeyCtl._map) map.removeControl(shipKeyCtl);
+}
+live.on('add remove', syncShipKey); ships.on('add remove', syncShipKey);
 
 const places = [
   ['Recife', -8.05, -34.88], ['Natal', -5.79, -35.21], ['João Pessoa', -7.12, -34.85],
