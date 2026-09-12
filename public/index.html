@@ -2842,13 +2842,15 @@ function onZoom() {
    the page says what happened. */
 const COARSE = [[sst, 9, 'Sea surface temperature'], [trueColor, 11, 'Satellite imagery'], [radar, 10, 'Rain radar'],
   [chloro, 9, 'Chlorophyll'], [seaIce, 8, 'Sea ice'], [dust, 8, 'Dust and aerosol'], [nightLights, 10, 'Night lights']];
+/* The status line has one slot and many writers; a hidden-layer note must sit beside the chart
+   note, not lose to it, so these append and run after updateCharts on every move. */
+const addNote = t => { chartMsg.textContent = chartMsg.textContent ? chartMsg.textContent + ' · ' + t : t; };
 function coarseNote() {
   const z = map.getZoom();
   const hidden = COARSE.filter(c => map.hasLayer(c[0]) && z > c[1]);
-  if (hidden.length) chartMsg.textContent = hidden.map(c => c[2]).join(' and ') +
-    ' hidden here: too coarse past zoom ' + Math.min(...hidden.map(c => c[1]));
+  if (hidden.length) addNote(hidden.map(c => c[2]).join(' and ') +
+    ' hidden here: too coarse past zoom ' + Math.min(...hidden.map(c => c[1])));
 }
-map.on('zoomend', coarseNote);
 for (const c of COARSE) c[0].on('add', coarseNote);
 /* The EMODnet layers only exist in European water and only draw from a set zoom; on the wrong
    continent a ticked box that shows nothing looks broken. */
@@ -2859,14 +2861,13 @@ function boundedNote() {
   for (const [l, name, where] of BOUNDED) {
     if (!map.hasLayer(l)) continue;
     const o = l.options;
-    if (o.bounds && !o.bounds.intersects(v)) chartMsg.textContent = name + ': ' + (where || 'no data in this part of the world');
-    else if (z < o.minZoom) chartMsg.textContent = name + ' hidden here: zoom in to ' + o.minZoom + ' or closer';
+    if (o.bounds && !o.bounds.intersects(v)) addNote(name + ': ' + (where || 'no data in this part of the world'));
+    else if (z < o.minZoom) addNote(name + ' hidden here: zoom in to ' + o.minZoom + ' or closer');
   }
 }
-map.on('moveend', boundedNote);
 for (const b of BOUNDED) b[0].on('add', boundedNote);
 
-map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); conditions.reload(); }); onZoom();
+map.on('zoomend', onZoom); map.on('moveend', () => { updateCharts(); conditions.reload(); coarseNote(); boundedNote(); }); onZoom();
 // open on the viewer's own position; a refusal leaves the default view without complaint
 if (navigator.geolocation) toggleGps(true);
 
