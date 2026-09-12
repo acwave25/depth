@@ -712,6 +712,12 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .lyr-list.on { display:block; }
 .lyr-list label { display:flex; align-items:center; gap:6px; font-size:12.5px; line-height:1.3; padding:3px 0; cursor:pointer; }
 .lyr-list input { margin:0; flex:none; }
+.lyr-list label em { margin-left:auto; font-style:normal; font-size:10px; color:#8497a0; letter-spacing:.03em; white-space:nowrap; padding-left:8px; }
+.lyr-list label.off span { color:#9aa8b0; }
+.lyr-list label.off em { color:#c8102e; }
+.lyr-close { margin-left:auto; font:400 18px/1 'Outfit',sans-serif; width:28px; height:26px; border:0; border-radius:6px; background:transparent; color:var(--color-navy); cursor:pointer; }
+.lyr-close:hover { background:rgba(15,46,61,0.08); }
+.zoom-pill { font:500 11px/1 'Outfit',sans-serif; letter-spacing:.04em; color:var(--color-navy); background:rgba(255,255,255,0.9); border:1px solid rgba(15,46,61,0.15); border-radius:999px; padding:5px 9px; margin:0 10px 6px 0; }
 .leaflet-bar a { color:var(--color-navy) !important; }
 .city-dot { width:10px; height:10px; background:var(--color-yellow);
   border:1.5px solid var(--color-navy); border-radius:50%; }
@@ -1151,7 +1157,7 @@ const osmDepth = L.tileLayer.wms('https://depth.openseamap.org/geoserver/opensea
 
 /* Weather radar: RainViewer global mosaic, free and keyless. The frame path rotates, so the
    layer asks the index for the newest frame and re-checks every ten minutes. */
-const radar = L.tileLayer('', { opacity: 0.75, maxNativeZoom: 7, maxZoom: 10, attribution: 'RainViewer' });   // above z7 the mosaic serves a 'zoom not supported' graphic, so upsample instead
+const radar = L.tileLayer('', { opacity: 0.75, maxNativeZoom: 7, maxZoom: 19, attribution: 'RainViewer' });   // above z7 the mosaic serves a 'zoom not supported' graphic, so upsample instead
 let radarTimer = null;
 async function refreshRadar() {
   try {
@@ -1732,14 +1738,14 @@ const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
 /* These two are coarse global products: sea surface temperature is about a kilometre per pixel and
    the imagery a few hundred metres. Stretching them to harbour zoom turned the whole screen into a
    smear, so each stops drawing a couple of levels past its real resolution and says why. */
-const sst = gibs('GHRSST_L4_MUR_Sea_Surface_Temperature', 7, 'png', 'default', { opacity: 0.72, maxZoom: 9 });
+const sst = gibs('GHRSST_L4_MUR_Sea_Surface_Temperature', 7, 'png', 'default', { opacity: 0.72 });   // smooth field: enlarge past native, never hide
 const trueColor = gibs('VIIRS_NOAA20_CorrectedReflectance_TrueColor', 9, 'jpg', yesterday, { opacity: 0.9, maxZoom: 11 });
 
 /* Four more NASA products. Each publishes on its own lag — asking for today gives 404s — and each
    stops at its own matrix level, past which the server answers 400 rather than an enlarged tile. */
-const chloro = gibs('VIIRS_NOAA20_Chlorophyll_a', 7, 'png', daysBack(2), { opacity: 0.65, maxZoom: 9 });
-const seaIce = gibs('GHRSST_L4_GAMSSA_GDS2_Sea_Ice_Concentration', 6, 'png', daysBack(1), { opacity: 0.55, maxZoom: 8 });
-const dust = gibs('MODIS_Terra_Aerosol', 6, 'png', daysBack(1), { opacity: 0.6, maxZoom: 8 });
+const chloro = gibs('VIIRS_NOAA20_Chlorophyll_a', 7, 'png', daysBack(2), { opacity: 0.65 });
+const seaIce = gibs('GHRSST_L4_GAMSSA_GDS2_Sea_Ice_Concentration', 6, 'png', daysBack(1), { opacity: 0.55 });
+const dust = gibs('MODIS_Terra_Aerosol', 6, 'png', daysBack(1), { opacity: 0.6 });
 // at-sensor radiance keeps the transient lights, which is how fishing fleets show up at all;
 // it is an opaque black raster, so it is blended rather than laid flat over the chart
 const nightLights = gibs('VIIRS_SNPP_DayNightBand_At_Sensor_Radiance', 8, 'png', daysBack(1),
@@ -2766,10 +2772,19 @@ const LAYER_GROUPS = [
   ['Traffic', 'check', { 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Shipping chokepoints (IMF)': chokepoints, 'Night lights, fishing fleets (NASA)': nightLights, 'Major ports (World Port Index)': ports, 'Shipping density 2004-05 (NOAA)': shipDensity }],
   ['Infrastructure', 'check', { 'Wind farms, offshore Europe (EMODnet)': windFarms, 'Wind turbines, Brazil (ANEEL)': anelWind, 'Wind farms, worldwide (WRI)': windWorld, 'Power plants, all fuels (WRI)': powerAll, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
 ];
+/* Where each layer actually draws. Anything not listed reads its own minZoom; the imagery caps come from COARSE. */
+function zoomWindow(layer) {
+  const fixed = new Map([[conditions, [0, COND_MAX_Z]], [live, [AIS_MIN_Z, 19]], [charts, [CHARTS_MIN_Z, 19]], [chart, [CHART_MIN_ZOOM, 19]],
+    [tides, [COOPS_MAX_Z, 19]], [windWorld, [PP_MIN_Z, 19]], [powerAll, [PP_MIN_Z, 19]]]);
+  if (fixed.has(layer)) return fixed.get(layer);
+  const c = COARSE.find(x => x[0] === layer);
+  return [layer.options && layer.options.minZoom || 0, c ? c[1] : 19];
+}
 const lyrCtl = L.control({ position: 'topright' });
 lyrCtl.onAdd = () => {
   const d = L.DomUtil.create('div', 'leaflet-bar lyr-ctl');
   d.innerHTML = '<a class="lyr-toggle" href="#" title="Layers"></a><div class="lyr-panel"><div class="lyr-tabs"></div><div class="lyr-lists"></div></div>';
+  const rows = [];   // [label element, range element, layer] for the zoom-window refresh
   L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
   const tabs = d.querySelector('.lyr-tabs'), lists = d.querySelector('.lyr-lists');
   LAYER_GROUPS.forEach(([name, kind, layers], i) => {
@@ -2787,6 +2802,7 @@ lyrCtl.onAdd = () => {
       inp.type = kind === 'radio' ? 'radio' : 'checkbox'; if (kind === 'radio') inp.name = 'lyr-base';
       inp.checked = map.hasLayer(layer);
       L.DomUtil.create('span', '', lab).innerHTML = label;
+      if (kind !== 'radio') rows.push([lab, L.DomUtil.create('em', '', lab), layer]);
       inp.onchange = () => {
         if (kind === 'radio') {
           for (const l of Object.values(layers)) if (l !== layer && map.hasLayer(l)) map.removeLayer(l);
@@ -2797,11 +2813,27 @@ lyrCtl.onAdd = () => {
     }
     mark();
   });
+  const close = L.DomUtil.create('button', 'lyr-close', tabs); close.type = 'button'; close.textContent = '×'; close.title = 'Close';
+  close.onclick = () => d.classList.remove('open');
   d.querySelector('.lyr-toggle').onclick = e => { e.preventDefault(); d.classList.toggle('open'); };
   map.on('click', () => d.classList.remove('open'));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') d.classList.remove('open'); });
+  const refresh = () => {
+    const z = map.getZoom();
+    for (const [lab, em, layer] of rows) {
+      const [lo, hi] = zoomWindow(layer);
+      em.textContent = lo > 0 && hi < 19 ? 'z' + lo + '–' + hi : lo > 0 ? 'z' + lo + '+' : hi < 19 ? 'to z' + hi : '';
+      lab.classList.toggle('off', z < lo || z > hi);
+    }
+  };
+  map.on('zoomend', refresh); refresh();
   return d;
 };
 lyrCtl.addTo(map);
+/* Every layer has a zoom window; the number makes the panel's ranges and the notes meaningful. */
+const zoomCtl = L.control({ position: 'bottomright' });
+zoomCtl.onAdd = () => { const d = L.DomUtil.create('div', 'zoom-pill'); d.textContent = 'zoom ' + map.getZoom(); map.on('zoomend', () => { d.textContent = 'zoom ' + map.getZoom(); }); return d; };
+zoomCtl.addTo(map);
 
 const places = [
   ['Recife', -8.05, -34.88], ['Natal', -5.79, -35.21], ['João Pessoa', -7.12, -34.85],
@@ -2840,8 +2872,10 @@ function onZoom() {
 }
 /* Leaflet simply stops drawing a layer past its maxZoom, which looks like a broken toggle unless
    the page says what happened. */
-const COARSE = [[sst, 9, 'Sea surface temperature'], [trueColor, 11, 'Satellite imagery'], [radar, 10, 'Rain radar'],
-  [chloro, 9, 'Chlorophyll'], [seaIce, 8, 'Sea ice'], [dust, 8, 'Dust and aerosol'], [nightLights, 10, 'Night lights']];
+const COARSE = [[trueColor, 11, 'Satellite imagery'], [nightLights, 10, 'Night lights']];   // imagery: enlarging it would mislead
+// smooth fields keep drawing, enlarged from their native pixels; say so once the enlargement is visible
+const ENLARGED = [[sst, 9, 'Sea temperature'], [sstAnom, 12, 'Sea temp anomaly'], [radar, 9, 'Rain radar'], [chloro, 9, 'Chlorophyll'],
+  [seaIce, 8, 'Sea ice'], [dust, 8, 'Dust'], [windAtlas, 12, 'Wind atlas']];
 /* The status line has one slot and many writers; a hidden-layer note must sit beside the chart
    note, not lose to it, so these append and run after updateCharts on every move. */
 const addNote = t => { chartMsg.textContent = chartMsg.textContent ? chartMsg.textContent + ' · ' + t : t; };
@@ -2850,6 +2884,8 @@ function coarseNote() {
   const hidden = COARSE.filter(c => map.hasLayer(c[0]) && z > c[1]);
   if (hidden.length) addNote(hidden.map(c => c[2]).join(' and ') +
     ' hidden here: too coarse past zoom ' + Math.min(...hidden.map(c => c[1])));
+  const big = ENLARGED.filter(c => map.hasLayer(c[0]) && z > c[1]);
+  if (big.length) addNote(big.map(c => c[2]).join(', ') + ' enlarged from ' + Math.round(40075000 / 256 / Math.pow(2, Math.min(...big.map(c => c[1]))) / 10) * 10 + ' m pixels');
 }
 for (const c of COARSE) c[0].on('add', coarseNote);
 /* The EMODnet layers only exist in European water and only draw from a set zoom; on the wrong
