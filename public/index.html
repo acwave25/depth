@@ -2776,8 +2776,8 @@ const LAYER_GROUPS = [
    the page says what happened. */
 const COARSE = [[trueColor, 11, 'Satellite imagery'], [nightLights, 10, 'Night lights']];   // imagery: enlarging it would mislead
 // smooth fields keep drawing, enlarged from their native pixels; say so once the enlargement is visible
-const ENLARGED = [[sst, 9, 'Sea temperature'], [sstAnom, 12, 'Sea temp anomaly'], [radar, 9, 'Rain radar'], [chloro, 9, 'Chlorophyll'],
-  [seaIce, 8, 'Sea ice'], [dust, 8, 'Dust'], [windAtlas, 12, 'Wind atlas']];
+const ENLARGED = [[sst, 9, 'Sea temperature', '1 km'], [sstAnom, 9, 'Sea temp anomaly', '5 km'], [radar, 9, 'Rain radar', '2 km'], [chloro, 9, 'Chlorophyll', '750 m'],
+  [seaIce, 8, 'Sea ice', '25 km'], [dust, 8, 'Dust', '10 km'], [windAtlas, 12, 'Wind atlas', '250 m']];
 /* The status line has one slot and many writers; a hidden-layer note must sit beside the chart
    note, not lose to it, so these append and run after updateCharts on every move. */
 const addNote = t => { chartMsg.textContent = chartMsg.textContent ? chartMsg.textContent + ' · ' + t : t; };
@@ -2885,7 +2885,7 @@ function coarseNote() {
   if (hidden.length) addNote(hidden.map(c => c[2]).join(' and ') +
     ' hidden here: too coarse past zoom ' + Math.min(...hidden.map(c => c[1])));
   const big = ENLARGED.filter(c => map.hasLayer(c[0]) && z > c[1]);
-  if (big.length) addNote(big.map(c => c[2]).join(', ') + ' enlarged from ' + Math.round(40075000 / 256 / Math.pow(2, Math.min(...big.map(c => c[1]))) / 10) * 10 + ' m pixels');
+  if (big.length) addNote(big.map(c => c[2] + ' enlarged — data is ' + c[3] + ' per pixel').join(' · '));
 }
 for (const c of COARSE) c[0].on('add', coarseNote);
 /* The EMODnet layers only exist in European water and only draw from a set zoom; on the wrong
