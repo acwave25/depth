@@ -742,6 +742,10 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .ship-key span { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
 .ship-key i { display:inline-block; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid #7f8c8d; }
 .ship-key em { font-style:normal; color:#8497a0; width:100%; }
+.ramp-key { display:flex; flex-wrap:wrap; gap:3px 8px; max-width:250px; font:400 10px/1.2 'Outfit',sans-serif; color:#3d5260; background:rgba(255,255,255,0.92); border:1px solid rgba(15,46,61,0.15); border-radius:8px; padding:6px 8px; margin:0 10px 6px 0; }
+.ramp-key span { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+.ramp-key i { display:inline-block; width:12px; height:10px; border-radius:2px; }
+.ramp-key em { font-style:normal; color:#8497a0; width:100%; }
 .zoom-pill { background:rgba(255,255,255,0.9); border:1px solid rgba(15,46,61,0.15); border-radius:999px; margin:0 10px 6px 0; }
 .zoom-pill select { font:500 11px/1 'Outfit',sans-serif; letter-spacing:.04em; color:var(--color-navy); background:transparent; border:0; padding:5px 9px; cursor:pointer; -webkit-appearance:none; appearance:none; }
 .leaflet-bar a { color:var(--color-navy) !important; }
@@ -886,7 +890,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · energy map EPE · power plants WRI GPPD (CC BY 4.0) · ocean layers via Resource Watch (WRI) · mangroves Global Mangrove Watch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap · population WorldPop, GHSL, GPWv4 · IBGE · GDL · Kummu et al.</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · energy map EPE · power plants WRI GPPD (CC BY 4.0) · ocean layers via Resource Watch (WRI) · mangroves Global Mangrove Watch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap · population Kontur (CC BY 4.0), WorldPop, GHSL, GPWv4 · IBGE · GDL · Kummu et al.</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -2051,6 +2055,12 @@ const ibgeKm = (service, layer, opts) => arcgisChart('https://mapasinterativos.i
 const ibgeLowIncome = ibgeKm('domicilio_v2', 1);
 const ibgeIlliteracy = ibgeKm('densidade_v2', 3);
 const ibgeCoastDist = ibgeKm('Populacao_e_Ambiente_2022', 2, { minZoom: 4, opacity: 0.6, attribution: 'IBGE' });
+/* Self-hosted people rasters: download-only datasets tiled by ~/Charts/People-build/build.py into
+   PMTiles on R2 (people/*.pmtiles). Each carries a colour ramp shown in the key while it is on. */
+const peopleTiles = (file, minZoom, maxNativeZoom, attribution, opts) => pmtiles.leafletRasterLayer(
+  new pmtiles.PMTiles(R2 + 'people/' + file + '.pmtiles'),
+  Object.assign({ minZoom, maxNativeZoom, maxZoom: 19, zIndex: 10, opacity: 0.8, bounds: BR_BOUNDS, attribution }, opts));
+const konturPop = peopleTiles('people-kontur-br', 3, 11, 'Kontur Population 2023 (CC BY 4.0)');
 // UKHO's worldwide wreck database, the one layer here with real coverage off Brazil;
 // below zoom 9 it paints most of the sea, so it starts there
 const wrecks = emodLayer('wwshipwrecks',
@@ -2921,7 +2931,7 @@ const LAYER_GROUPS = [
     [ppDot('C') + 'Coal plants (WRI)']: coalPP, [ppDot('O') + 'Oil plants (WRI)']: oilPP, [ppDot('N') + 'Nuclear plants (WRI)']: nuclearPP,
     [ppDot('B') + 'Biomass and waste plants (WRI)']: bioPP, [ppDot('T') + 'Geothermal plants (WRI)']: geoPP, [ppDot('V') + 'Wave and tidal plants (WRI)']: tidalPP, 'Cables and pipelines, offshore Europe (EMODnet)': cablesPipes, 'Brazil: gas pipelines and terminals (EPE)': epeGas, 'Brazil: oil terminals, refineries, pipeline plan (EPE)': epeOil,
     'Brazil: oil and gas fields, pre-salt (EPE/ANP)': epeFields, 'Brazil: power grid (EPE)': epeGrid, 'Offshore platforms (EMODnet)': platforms }],
-  ['People', 'check', { 'Population, 100 m (WorldPop 2020)': worldPop, 'Population density (GPWv4 2020)': popDensity, 'Settlement type (GHS-SMOD)': settlement, 'Built-up by era (GHS-BUILT)': builtEra,
+  ['People', 'check', { 'Brazil: population 400 m (Kontur 2023)': konturPop, 'Population, 100 m (WorldPop 2020)': worldPop, 'Population density (GPWv4 2020)': popDensity, 'Settlement type (GHS-SMOD)': settlement, 'Built-up by era (GHS-BUILT)': builtEra,
     'Night lights 2016 (NASA Black Marble)': nightLights2016, 'GDP, gridded (Kummu 2015)': gdpGrid, 'GDP per capita (Kummu 2015)': gdpPerCap, 'Travel time to a city (MAP 2015)': travelTime,
     'Urban expansion to 2050': urban2050, 'Coastal land under 10 m (LECZ)': lecz, 'Human development index, subnational (GDL 2019)': hdi,
     'Brazil: 2022 census grid, people per km² (IBGE)': ibgeGrid, 'Brazil: GDP per capita by município 2022 (IBGE)': ibgePib, 'Brazil: population density 2020 (IBGE)': ibgeDensity,
@@ -3010,7 +3020,7 @@ const PRESETS = [
   ['Hazards', plain, [hazards, navwarn, quakes, eonet, cycloneHist, coastFlood], 5],
   ['Traffic', plain, [live, ships, chokepoints, ports], 8],
   ['Infrastructure', plain, [...Object.values(LAYER_GROUPS.find(g => g[0] === 'Infrastructure')[2]), wrecks], 6],
-  ['People', plain, [worldPop, ibgeGrid, ibgePib], 8],
+  ['People', plain, [konturPop, ibgePib], 8],
   ['Clear', null, [], null],   // keeps the base, no zoom change
 ];
 const overlays = LAYER_GROUPS.filter(g => g[1] === 'check').flatMap(g => Object.values(g[2]));
@@ -3174,6 +3184,20 @@ function syncShipKey() {
   else if (!on && shipKeyCtl._map) map.removeControl(shipKeyCtl);
 }
 live.on('add remove', syncShipKey); ships.on('add remove', syncShipKey);
+/* Colour keys for the self-hosted rasters, one block per layer that is on. */
+const RAMP_KEYS = new Map([
+  [konturPop, ['People per km², 400 m cells', [['#ffffcc', '1'], ['#ffeda0', '10'], ['#feb24c', '100'], ['#f03b20', '1 000'], ['#bd0026', '10 000'], ['#4a0016', '50 000']]]],
+]);
+const rampKeyCtl = L.control({ position: 'bottomright' });
+rampKeyCtl.onAdd = () => L.DomUtil.create('div', 'ramp-key');
+function syncRampKey() {
+  const on = [...RAMP_KEYS].filter(([l]) => map.hasLayer(l));
+  if (!on.length) { if (rampKeyCtl._map) map.removeControl(rampKeyCtl); return; }
+  if (!rampKeyCtl._map) rampKeyCtl.addTo(map);
+  rampKeyCtl.getContainer().innerHTML = on.map(([, [title, stops]]) =>
+    '<em>' + title + '</em>' + stops.map(([c, n]) => '<span><i style="background:' + c + '"></i>' + n + '</span>').join('')).join('');
+}
+for (const [l] of RAMP_KEYS) l.on('add remove', syncRampKey);
 
 const places = [
   ['Recife', -8.05, -34.88], ['Natal', -5.79, -35.21], ['João Pessoa', -7.12, -34.85],
@@ -3224,7 +3248,7 @@ for (const c of COARSE) c[0].on('add', coarseNote);
 const BOUNDED = [[windFarms, 'Offshore wind farms', 'European waters only'], [anelWind, 'Brazil wind turbines', 'Brazil only'],
   [epeGas, 'Brazil gas network', 'Brazil only'], [epeOil, 'Brazil oil terminals', 'Brazil only'], [epeFields, 'Brazil oil and gas fields', 'Brazil only'], [epeGrid, 'Brazil power grid', 'Brazil only'], [platforms, 'Offshore platforms', 'European waters'],
   [cablesPipes, 'Cables and pipelines', null], [wrecks, 'Wrecks', null],
-  ...[[ibgeGrid, 'Census grid'], [ibgePib, 'GDP per município'], [ibgeDensity, 'IBGE density'], [ibgeSectors, 'Census sectors'], [ibgeLowIncome, 'Low income'],
+  ...[[konturPop, 'Kontur population'], [ibgeGrid, 'Census grid'], [ibgePib, 'GDP per município'], [ibgeDensity, 'IBGE density'], [ibgeSectors, 'Census sectors'], [ibgeLowIncome, 'Low income'],
     [ibgeIlliteracy, 'Illiteracy'], [ibgePoverty, 'Poverty by state'], [ibgeCoastDist, 'Distance to coast']].map(([l, n]) => [l, n, 'Brazil only'])];
 function boundedNote() {
   const z = map.getZoom(), v = map.getBounds();
