@@ -1636,22 +1636,40 @@ function aisOpen() {
   aisSock.onclose = () => { if (map.hasLayer(live)) setTimeout(aisOpen, 4000); };   // the stream drops now and then
   aisSock.onerror = () => { aisNote = 'AIS stream unavailable'; };
 }
+/* Markers persist per vessel and are moved, not rebuilt: rebuilding every two seconds destroyed
+   whatever popup the reader had just opened. */
+const aisMarkers = new Map();
+function aisPopup(mmsi, v) {
+  const age = Math.round((Date.now() - v.ts) / 60000);
+  return '<b>' + (v.name || ('MMSI ' + mmsi)) + '</b><br>' + SHIP_TYPE(v.type)[1] + '<br>' +
+    (v.sog != null ? v.sog.toFixed(1) + ' kn' : '') +
+    (v.cog != null ? ' · course ' + Math.round(v.cog) + '°' : '') +
+    (v.dest ? '<br>to ' + v.dest : '') +
+    '<br><small>aisstream.io · ' + (age ? age + ' min ago' : 'just now') + '</small>';
+}
 function aisDraw() {
   if (!map.hasLayer(live)) return;
   const cut = Date.now() - AIS_STALE, view = map.getBounds().pad(0.1);
-  live.clearLayers();
+  const keep = new Set();
   let drawn = 0;
   for (const [mmsi, v] of aisSeen) {
     if (v.ts < cut) { aisSeen.delete(mmsi); continue; }
     if (!view.contains([v.lat, v.lon]) || ++drawn > 900) continue;
-    const age = Math.round((Date.now() - v.ts) / 60000);
-    live.addLayer(L.marker([v.lat, v.lon], { icon: shipIcon(v.type, v.hdg), keyboard: false })
-      .bindPopup('<b>' + (v.name || ('MMSI ' + mmsi)) + '</b><br>' + SHIP_TYPE(v.type)[1] + '<br>' +
-        (v.sog != null ? v.sog.toFixed(1) + ' kn' : '') +
-        (v.cog != null ? ' · course ' + Math.round(v.cog) + '°' : '') +
-        (v.dest ? '<br>to ' + v.dest : '') +
-        '<br><small>aisstream.io · ' + (age ? age + ' min ago' : 'just now') + '</small>'));
+    keep.add(mmsi);
+    let m = aisMarkers.get(mmsi);
+    if (!m) {
+      m = L.marker([v.lat, v.lon], { icon: shipIcon(v.type, v.hdg), keyboard: false }).bindPopup(aisPopup(mmsi, v));
+      m._aisKey = v.type + '/' + v.hdg;
+      aisMarkers.set(mmsi, m); live.addLayer(m);
+    } else {
+      m.setLatLng([v.lat, v.lon]);
+      const key = v.type + '/' + v.hdg;
+      if (m._aisKey !== key) { m.setIcon(shipIcon(v.type, v.hdg)); m._aisKey = key; }
+      m.setPopupContent(aisPopup(mmsi, v));
+    }
   }
+  for (const [mmsi, m] of aisMarkers)
+    if (!keep.has(mmsi)) { live.removeLayer(m); aisMarkers.delete(mmsi); }
   if (map.getZoom() >= AIS_MIN_Z)
     chartMsg.textContent = drawn ? drawn + ' ships heard in view' : aisNote || 'no ships heard here yet';
   else chartMsg.textContent = 'zoom in for live ship traffic';
@@ -1660,7 +1678,7 @@ live.on('add', () => { aisOpen(); aisDrawTimer = setInterval(aisDraw, 2000); });
 live.on('remove', () => {
   clearInterval(aisDrawTimer); clearTimeout(aisSubTimer);
   if (aisSock) { aisSock.onclose = null; aisSock.close(); aisSock = null; }
-  aisSeen.clear(); live.clearLayers();
+  aisSeen.clear(); aisMarkers.clear(); live.clearLayers();
 });
 map.on('moveend', () => {
   if (!map.hasLayer(live)) return;
