@@ -930,6 +930,11 @@ const plain = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
   maxNativeZoom: 16, maxZoom: 19, attribution: 'Esri, HERE, Garmin'   // CARTO started watermarking its keyless tiles
 });
+// borders, states, cities and roads as labels only — drawn above every raster overlay
+const placeLabels = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+  maxNativeZoom: 19, maxZoom: 19, zIndex: 20, attribution: 'Esri, HERE, Garmin'
+});
 const esriRef = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 13, opacity: 0.9
@@ -2901,6 +2906,7 @@ charts.on('add', () => { chartsOn = true; updateCharts(); });
 charts.on('remove', () => { chartsOn = false; for (const s of CHART_SOURCES) charts.removeLayer(s.layer); chartMsg.textContent = ''; limitZoom(false); });
 
 plain.addTo(map);
+placeLabels.addTo(map);
 charts.addTo(map);
 conditions.addTo(map);   // on from the start, at the current hour
 let baseLocked = false;                      // a manual pick wins over the automatic swap
@@ -2920,7 +2926,7 @@ if (typeof LAND_POINTS !== 'undefined') extCtl.addTo(map);
    readable at thirty entries; this one puts a row of theme buttons over the list. */
 const LAYER_GROUPS = [
   ['Base', 'radio', { 'Plain (Esri)': plain, 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco }],
-  ['Charts', 'check', { 'Official nautical charts': charts, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef,
+  ['Charts', 'check', { 'Official nautical charts': charts, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Borders, states, cities (Esri)': placeLabels, 'Sea names, coastal places (Esri)': esriRef,
     'Depth, Europe (EMODnet)': emodnet, 'Depth, Ireland 10 m (INFOMAR)': infomar, 'Depth, Belgium 10 m (MDK)': belgium }],
   ['Weather', 'check', { 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Rain radar (RainViewer)': radar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Average wind at 50 m (Global Wind Atlas)': windAtlas }],
   ['Sea', 'check', { 'Sea surface temperature (NASA)': sst, 'Tide gauges, measured (NOAA)': tides, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Satellite, yesterday (NASA)': trueColor, 'Dust and aerosol (NASA)': dust,
@@ -3016,13 +3022,13 @@ lyrCtl.addTo(map);
 /* Preset views: one tap sets the base, the overlays and a zoom where they all draw. Anything a
    preset does not name goes off, so the map reads as one theme rather than an accumulation. */
 const PRESETS = [
-  ['Navigation', plain, [charts, seamarks, live, tides, navwarn, wrecks], 12],
-  ['Weather', sat, [conditions, radar, cyclones, alerts], 7],
-  ['Sea', sat, [sstAnom, chloro, reefs, mangroves, mpa], 6],
-  ['Hazards', plain, [hazards, navwarn, quakes, eonet, cycloneHist, coastFlood], 5],
-  ['Traffic', plain, [live, ships, chokepoints, ports], 8],
-  ['Infrastructure', plain, [...Object.values(LAYER_GROUPS.find(g => g[0] === 'Infrastructure')[2]), wrecks], 6],
-  ['People', plain, [konturPop, ibgePib], 8],
+  ['Navigation', plain, [placeLabels, charts, seamarks, live, tides, navwarn, wrecks], 12],
+  ['Weather', sat, [placeLabels, conditions, radar, cyclones, alerts], 7],
+  ['Sea', sat, [placeLabels, sstAnom, chloro, reefs, mangroves, mpa], 6],
+  ['Hazards', plain, [placeLabels, hazards, navwarn, quakes, eonet, cycloneHist, coastFlood], 5],
+  ['Traffic', plain, [placeLabels, live, ships, chokepoints, ports], 8],
+  ['Infrastructure', plain, [placeLabels, ...Object.values(LAYER_GROUPS.find(g => g[0] === 'Infrastructure')[2]), wrecks], 6],
+  ['People', plain, [placeLabels, konturPop, ibgePib], 8],
   ['Clear', null, [], null],   // keeps the base, no zoom change
 ];
 const overlays = LAYER_GROUPS.filter(g => g[1] === 'check').flatMap(g => Object.values(g[2]));
