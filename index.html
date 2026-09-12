@@ -1986,11 +1986,23 @@ const wrecks = emodLayer('wwshipwrecks',
    so a tap asks whichever of them are switched on what is under the finger. */
 const EMOD_QUERY = [[windFarms, 'windfarmspoly,windfarms'], [cablesPipes, 'telecablesactual,powercables,pipelines'],
   [platforms, 'platforms'], [wrecks, 'wwshipwrecks']];
-const EMOD_FIELDS = [['name', ''], ['naam', ''], ['country', ''], ['operator', 'operator'],
-  ['eigenaar', 'owner'], ['power_mw', 'MW'], ['n_turbines', 'turbines'], ['status', ''],
-  ['medium', ''], ['size_in', 'inch'], ['from_loc', 'from'], ['to_loc', 'to'],
-  ['trace_van', 'from'], ['trace_tot', 'to'], ['water_depth', 'm deep'], ['water_dept', 'm deep'],
+const EMOD_FIELDS = [['name', ''], ['naam', ''], ['name_', ''], ['navn', ''], ['pipe_name', ''],
+  ['country', ''], ['operator', 'operator'], ['eigenaar', 'owner'], ['eier', 'owner'],
+  ['power_mw', 'MW'], ['n_turbines', 'turbines'], ['spenning_k', 'kV'], ['status', ''],
+  ['current_status', ''], ['medium', ''], ['size_in', 'inch'], ['from_loc', 'from'], ['to_loc', 'to'],
+  ['trace_van', 'from'], ['trace_tot', 'to'], ['year', ''], ['driftsatta', ''],
+  ['water_depth', 'm deep'], ['water_dept', 'm deep'], ['type', ''],
   ['wreck_cate', ''], ['water_leve', ''], ['primary_production', ''], ['category', '']];
+/* The cable layers are GeoServer groups of national datasets, each with its own field names.
+   SHOM's (all of France and the western Med) carry nothing but S-57 codes, so the kind of thing
+   comes from the feature id and the codes are decoded, else a French cable would show no row. */
+const EMOD_KIND = { shomcables: 'telecom cable', pcablesshom: 'power cable', rijkscables: 'cable',
+  pcablesrijks: 'power cable', bshcontiscables: 'data cable', pcablesbshcontis: 'power cable',
+  pcablesnve: 'power cable', cicacables: 'telecom cable', sigcables: 'telecom cable',
+  maltacables: 'telecom cable', ukfibrecables: 'cable', pipelines: 'pipeline', platforms: 'platform',
+  windfarms: 'wind farm', windfarmspoly: 'wind farm', wwshipwrecks: 'wreck' };
+const S57_CABLE = { 1: 'power cable', 3: 'transmission line', 4: 'telephone cable', 5: 'telegraph cable', 6: 'mooring cable' };
+const S57_STATUS = { 1: 'permanent', 4: 'disused', 7: 'temporary', 13: 'historic', 18: 'existence doubtful' };
 
 async function emodInfo(e) {
   const on = EMOD_QUERY.filter(q => map.hasLayer(q[0]));
@@ -2007,14 +2019,18 @@ async function emodInfo(e) {
   try {
     const j = await (await fetch(u)).json();
     if (!j.features || !j.features.length) return null;
-    return j.features.slice(0, 3).map(f => {
-      const p = f.properties || {}, bits = [];
+    const seen = new Set();   // a farm answers from both its polygon and its point layer
+    return j.features.map(f => {
+      const p = f.properties || {}, src = String(f.id || '').split('.')[0];
+      const bits = [S57_CABLE[p.catcbl] || EMOD_KIND[src] || src];
+      if (p.catcbl != null) p.status = S57_STATUS[p.status] || null;
       for (const [k, unit] of EMOD_FIELDS) {
-        if (p[k] == null || p[k] === '') continue;
-        bits.push(unit ? p[k] + ' ' + unit : String(p[k]));
+        const v = typeof p[k] === 'number' ? Math.round(p[k]) : p[k];   // 107.599998474 m deep
+        if (v == null || v === '' || v === 'n/a' || v === 'Onbekend') continue;
+        bits.push(unit ? v + ' ' + unit : String(v));
       }
       return bits.slice(0, 6).join(' · ');
-    }).filter(Boolean).join('<br>');
+    }).filter(t => t && !seen.has(t) && seen.add(t)).slice(0, 3).join('<br>');
   } catch (err) { return null; }
 }
 
