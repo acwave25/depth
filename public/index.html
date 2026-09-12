@@ -864,7 +864,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 <div class="presets" id="presets"></div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · power plants WRI GPPD (CC BY 4.0) · ocean layers via Resource Watch (WRI) · mangroves Global Mangrove Watch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · energy map EPE · power plants WRI GPPD (CC BY 4.0) · ocean layers via Resource Watch (WRI) · mangroves Global Mangrove Watch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1976,6 +1976,16 @@ const shipDensity = rwGee('096b7e26-a2b9-4c17-a32c-07ceed9dc27a', 'NOAA / NCEAS'
 const ports = rwCarto('1f855d5f-9dae-4cb4-9a22-634fd646ccf2', 'Major ports', 'NGA World Port Index');
 // weather
 const windAtlas = rwGee('1ae1f58f-569d-4a21-9835-3e9bdd93759b', 'Global Wind Atlas (DTU/World Bank, CC BY 4.0)', { opacity: 0.6 });
+/* Brazil's energy map: EPE (Empresa de Pesquisa Energética) publishes the whole system —
+   gas pipelines, terminals, refineries, oil and gas fields, the grid — as one open ArcGIS service. */
+const EPE = 'https://gisepeprd2.epe.gov.br/arcgis/rest/services/WMS_Webmap_EPE_Data/MapServer/export';
+const BR_BOUNDS = L.latLngBounds([-34, -74], [5.5, -34]);
+const epeLayer = (ids, opts) => arcgisChart(EPE, Object.assign({ extra: '&layers=show:' + ids, minZoom: 5, zIndex: 10, opacity: 0.9,
+  bounds: BR_BOUNDS, attribution: 'EPE Webmap' }, opts));
+const epeGas = epeLayer('50,51,52,54,55,56');      // LNG terminals, processing, compression, outflow / transmission / distribution pipelines
+const epeOil = epeLayer('31,32,33,34,36');         // fuel and LPG depots, refineries, oil terminals, indicative oil pipeline plan
+const epeFields = epeLayer('59,60,63,78', { opacity: 0.6 });   // contracted areas, union areas, open acreage, pre-salt polygon
+const epeGrid = epeLayer('22,23');                 // substations and transmission lines in operation
 // UKHO's worldwide wreck database, the one layer here with real coverage off Brazil;
 // below zoom 9 it paints most of the sea, so it starts there
 const wrecks = emodLayer('wwshipwrecks',
@@ -2844,7 +2854,8 @@ const LAYER_GROUPS = [
   ['Infrastructure', 'check', { 'Wind farms, offshore Europe (EMODnet)': windFarms, 'Wind turbines, Brazil (ANEEL)': anelWind, 'Wind farms, worldwide (WRI)': windWorld, 'Power plants, all fuels (WRI)': powerAll,
     [ppDot('S') + 'Solar plants (WRI)']: solarPP, [ppDot('H') + 'Hydro plants (WRI)']: hydroPP, [ppDot('G') + 'Gas plants (WRI)']: gasPP,
     [ppDot('C') + 'Coal plants (WRI)']: coalPP, [ppDot('O') + 'Oil plants (WRI)']: oilPP, [ppDot('N') + 'Nuclear plants (WRI)']: nuclearPP,
-    [ppDot('B') + 'Biomass and waste plants (WRI)']: bioPP, [ppDot('T') + 'Geothermal plants (WRI)']: geoPP, [ppDot('V') + 'Wave and tidal plants (WRI)']: tidalPP, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
+    [ppDot('B') + 'Biomass and waste plants (WRI)']: bioPP, [ppDot('T') + 'Geothermal plants (WRI)']: geoPP, [ppDot('V') + 'Wave and tidal plants (WRI)']: tidalPP, 'Cables and pipelines, offshore Europe (EMODnet)': cablesPipes, 'Brazil: gas pipelines and terminals (EPE)': epeGas, 'Brazil: oil terminals, refineries, pipeline plan (EPE)': epeOil,
+    'Brazil: oil and gas fields, pre-salt (EPE/ANP)': epeFields, 'Brazil: power grid (EPE)': epeGrid, 'Offshore platforms (EMODnet)': platforms }],
 ];
 /* Leaflet simply stops drawing a layer past its maxZoom, which looks like a broken toggle unless
    the page says what happened. */
@@ -3028,7 +3039,8 @@ function coarseNote() {
 for (const c of COARSE) c[0].on('add', coarseNote);
 /* The EMODnet layers only exist in European water and only draw from a set zoom; on the wrong
    continent a ticked box that shows nothing looks broken. */
-const BOUNDED = [[windFarms, 'Offshore wind farms', 'European waters only'], [anelWind, 'Brazil wind turbines', 'Brazil only'], [platforms, 'Offshore platforms', 'European waters'],
+const BOUNDED = [[windFarms, 'Offshore wind farms', 'European waters only'], [anelWind, 'Brazil wind turbines', 'Brazil only'],
+  [epeGas, 'Brazil gas network', 'Brazil only'], [epeOil, 'Brazil oil terminals', 'Brazil only'], [epeFields, 'Brazil oil and gas fields', 'Brazil only'], [epeGrid, 'Brazil power grid', 'Brazil only'], [platforms, 'Offshore platforms', 'European waters'],
   [cablesPipes, 'Cables and pipelines', null], [wrecks, 'Wrecks', null]];
 function boundedNote() {
   const z = map.getZoom(), v = map.getBounds();
