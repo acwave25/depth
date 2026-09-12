@@ -776,6 +776,10 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .time-ctl .modes button { flex:1; font-family:'Outfit',sans-serif; font-size:11px; cursor:pointer;
   background:#fff; color:#0f2e3d; border:1px solid rgba(15,46,61,0.25); border-radius:5px; padding:3px 0; }
 .time-ctl .modes button.on { background:#0f2e3d; color:#fff; border-color:#0f2e3d; }
+.time-ctl .legend { display:flex; flex-wrap:wrap; gap:3px 7px; margin:4px 0 6px; font-size:9.5px; color:#5f7280; }
+.time-ctl .legend span { display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }
+.time-ctl .legend i { display:inline-block; width:9px; height:9px; border-radius:2px; }
+.time-ctl .legend em { font-style:normal; color:#8497a0; }
 .time-ctl .hint { font-size:10px; opacity:0.55; margin-bottom:3px; }
 .time-ctl .summary { font-size:12px; line-height:1.35; margin:0 0 4px; }
 .time-ctl { max-width:260px; }
@@ -2639,6 +2643,7 @@ timeCtl.onAdd = () => {
       '<button data-m="' + m[0] + '">' + m[1] + '</button>').join('') + '</div>' +
     '<div class="summary" id="t-sum"></div>' +
     '<div class="hint" id="t-hint"></div>' +
+    '<div class="legend" id="t-legend"></div>' +
     '<div><b id="t-label">now</b> <span id="t-when"></span></div>' +
     '<input id="t-slider" type="range" min="0" max="' + (FCST_HOURS - 1) + '" value="0" step="1">';
   L.DomEvent.disableClickPropagation(d);
@@ -2675,11 +2680,28 @@ timeCtl.refresh = () => {
     : 'watts per square metre';
   document.querySelectorAll('.modes button').forEach(b =>
     b.classList.toggle('on', b.dataset.m === condMode));
+  const leg = document.getElementById('t-legend');
+  if (leg) leg.innerHTML = condLegend();
   if (fcstTimes && fcstTimes[fcstIdx]) {
     const t = new Date(fcstTimes[fcstIdx] + 'Z');
     when.textContent = t.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   } else when.textContent = '';
 };
+/* The arrow colours mean strength; without a key the reader had to guess which end was which. */
+function condLegend() {
+  const sw = (col, txt) => '<span><i style="background:' + col + '"></i>' + txt + '</span>';
+  if (condMode === 'sun') {
+    const stops = ['&lt;50', '200', '400', '600', '800', '1000', '1000+'];
+    return SOLAR_COLORS.map((c, i) => sw(c[1], stops[i])).join('') + '<em>W/m²</em>';
+  }
+  const scale = condMode === 'waves' ? 1 / 6 : 1, unit = condMode === 'waves' ? 'm' : 'kn';
+  const fmt = v => condMode === 'waves' ? v.toFixed(1) : String(v);
+  let lo = 0;
+  return WIND_COLORS.map(c => {
+    const t = c[0] >= 999 ? fmt(lo * scale) + '+' : (lo ? fmt(lo * scale) + '–' : '&lt;') + fmt(c[0] * scale);
+    lo = c[0]; return sw(c[1], t);
+  }).join('') + '<em>' + unit + (condMode === 'all' ? ', card edge = wind' : '') + '</em>';
+}
 function syncTimeCtl() {
   const on = map.hasLayer(conditions);
   if (on && !timeCtl._map) timeCtl.addTo(map);
