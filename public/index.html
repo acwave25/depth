@@ -2772,6 +2772,15 @@ const LAYER_GROUPS = [
   ['Traffic', 'check', { 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Shipping chokepoints (IMF)': chokepoints, 'Night lights, fishing fleets (NASA)': nightLights, 'Major ports (World Port Index)': ports, 'Shipping density 2004-05 (NOAA)': shipDensity }],
   ['Infrastructure', 'check', { 'Wind farms, offshore Europe (EMODnet)': windFarms, 'Wind turbines, Brazil (ANEEL)': anelWind, 'Wind farms, worldwide (WRI)': windWorld, 'Power plants, all fuels (WRI)': powerAll, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
 ];
+/* Leaflet simply stops drawing a layer past its maxZoom, which looks like a broken toggle unless
+   the page says what happened. */
+const COARSE = [[trueColor, 11, 'Satellite imagery'], [nightLights, 10, 'Night lights']];   // imagery: enlarging it would mislead
+// smooth fields keep drawing, enlarged from their native pixels; say so once the enlargement is visible
+const ENLARGED = [[sst, 9, 'Sea temperature'], [sstAnom, 12, 'Sea temp anomaly'], [radar, 9, 'Rain radar'], [chloro, 9, 'Chlorophyll'],
+  [seaIce, 8, 'Sea ice'], [dust, 8, 'Dust'], [windAtlas, 12, 'Wind atlas']];
+/* The status line has one slot and many writers; a hidden-layer note must sit beside the chart
+   note, not lose to it, so these append and run after updateCharts on every move. */
+const addNote = t => { chartMsg.textContent = chartMsg.textContent ? chartMsg.textContent + ' · ' + t : t; };
 /* Where each layer actually draws. Anything not listed reads its own minZoom; the imagery caps come from COARSE. */
 function zoomWindow(layer) {
   const fixed = new Map([[conditions, [0, COND_MAX_Z]], [live, [AIS_MIN_Z, 19]], [charts, [CHARTS_MIN_Z, 19]], [chart, [CHART_MIN_ZOOM, 19]],
@@ -2870,15 +2879,6 @@ function onZoom() {
   const z = map.getZoom();
   if (z >= 8) { if (!map.hasLayer(placesLayer)) placesLayer.addTo(map); } else map.removeLayer(placesLayer);
 }
-/* Leaflet simply stops drawing a layer past its maxZoom, which looks like a broken toggle unless
-   the page says what happened. */
-const COARSE = [[trueColor, 11, 'Satellite imagery'], [nightLights, 10, 'Night lights']];   // imagery: enlarging it would mislead
-// smooth fields keep drawing, enlarged from their native pixels; say so once the enlargement is visible
-const ENLARGED = [[sst, 9, 'Sea temperature'], [sstAnom, 12, 'Sea temp anomaly'], [radar, 9, 'Rain radar'], [chloro, 9, 'Chlorophyll'],
-  [seaIce, 8, 'Sea ice'], [dust, 8, 'Dust'], [windAtlas, 12, 'Wind atlas']];
-/* The status line has one slot and many writers; a hidden-layer note must sit beside the chart
-   note, not lose to it, so these append and run after updateCharts on every move. */
-const addNote = t => { chartMsg.textContent = chartMsg.textContent ? chartMsg.textContent + ' · ' + t : t; };
 function coarseNote() {
   const z = map.getZoom();
   const hidden = COARSE.filter(c => map.hasLayer(c[0]) && z > c[1]);
