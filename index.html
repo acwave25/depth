@@ -841,7 +841,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · power plants WRI GPPD (CC BY 4.0) · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1849,6 +1849,42 @@ const platforms = emodLayer('platforms',
 const anelWind = arcgisChart('https://sigel.aneel.gov.br/arcgis/rest/services/PORTAL/WFS/MapServer/export',
   { extra: '&layers=show:0,1', opacity: 0.9, minZoom: 6, maxZoom: 19, zIndex: 10,
     bounds: L.latLngBounds([-34, -74], [5.5, -34]), attribution: 'Aerogeradores © ANEEL/SIGEL' });
+/* WRI Global Power Plant Database: 34,936 plants in 167 countries, CC BY 4.0. One file, two
+   layers: wind on its own (the onshore complement to ANEEL and EMODnet) and every fuel together. */
+const PP_COLOR = { W: '#2e9e5b', S: '#e5b400', H: '#2f7fd6', G: '#c96a1b', C: '#4a4a4a', O: '#8a5a2b', B: '#7fa83a', N: '#b33fb5', T: '#d1443b', V: '#0fa9b8', X: '#8497a0' };
+const PP_NAME = { W: 'wind', S: 'solar', H: 'hydro', G: 'gas', C: 'coal', O: 'oil', B: 'biomass / waste', N: 'nuclear', T: 'geothermal', V: 'wave and tidal', X: 'other / storage' };
+const PP_MIN_Z = 4, ppCanvas = L.canvas({ padding: 0.3 });
+let ppData = null, ppLoading = null;
+const powerLayer = (filter) => {
+  const g = L.layerGroup();
+  const draw = () => {
+    if (!map.hasLayer(g) || !ppData) return;
+    g.clearLayers();
+    const z = map.getZoom();
+    if (z < PP_MIN_Z) { chartMsg.textContent = 'power plants hidden here: zoom in to ' + PP_MIN_Z + ' or closer'; return; }
+    const b = map.getBounds().pad(0.1); let n = 0;
+    for (const p of ppData) {
+      if (!filter(p) || !b.contains([p[0], p[1]])) continue;
+      if (++n > 4000) break;
+      L.circleMarker([p[0], p[1]], { renderer: ppCanvas, radius: Math.max(2.5, Math.min(11, Math.sqrt(p[2]) / 3)),
+        color: '#fff', weight: 0.7, fillColor: PP_COLOR[p[3]], fillOpacity: 0.85 })
+        .bindPopup('<b>' + p[4] + '</b><br>' + PP_NAME[p[3]] + ' · ' + p[2] + ' MW' + (p[6] ? ' · since ' + p[6] : '') +
+          '<br>' + p[5] + '<br><span style="color:#8497a0">WRI Global Power Plant Database</span>')
+        .addTo(g);
+    }
+  };
+  g.on('add', async () => {
+    if (!ppData) {
+      ppLoading = ppLoading || fetch('power-plants.json').then(r => r.json());
+      try { ppData = await ppLoading; } catch (e) { chartMsg.textContent = 'power plant data unavailable'; return; }
+    }
+    draw();
+  });
+  map.on('moveend', draw);
+  return g;
+};
+const windWorld = powerLayer(p => p[3] === 'W');
+const powerAll = powerLayer(() => true);
 // UKHO's worldwide wreck database, the one layer here with real coverage off Brazil;
 // below zoom 9 it paints most of the sea, so it starts there
 const wrecks = emodLayer('wwshipwrecks',
@@ -2680,7 +2716,7 @@ const LAYER_GROUPS = [
   ['Sea', 'check', { 'Sea surface temperature (NASA)': sst, 'Tide gauges, measured (NOAA)': tides, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Satellite, yesterday (NASA)': trueColor, 'Dust and aerosol (NASA)': dust }],
   ['Hazards', 'check', { 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn, 'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet, 'Wrecks, worldwide (UKHO)': wrecks }],
   ['Traffic', 'check', { 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Shipping chokepoints (IMF)': chokepoints, 'Night lights, fishing fleets (NASA)': nightLights }],
-  ['Infrastructure', 'check', { 'Wind farms, offshore Europe (EMODnet)': windFarms, 'Wind turbines, Brazil (ANEEL)': anelWind, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
+  ['Infrastructure', 'check', { 'Wind farms, offshore Europe (EMODnet)': windFarms, 'Wind turbines, Brazil (ANEEL)': anelWind, 'Wind farms, worldwide (WRI)': windWorld, 'Power plants, all fuels (WRI)': powerAll, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
 ];
 const lyrCtl = L.control({ position: 'topright' });
 lyrCtl.onAdd = () => {

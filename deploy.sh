@@ -3,6 +3,6 @@
 # custom domain (maps.waveadvisors.uk).
 set -e
 cd "$(dirname "$0")"
-cp index.html extremes-points.js dhn-sheets.js public/
+cp index.html extremes-points.js dhn-sheets.js power-plants.json public/
 git push origin main
 wrangler deploy
