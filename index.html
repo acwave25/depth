@@ -2477,10 +2477,8 @@ function condIcon(d) {
   lines.push(line('Wind', w ? '<b>' + Math.round(w.kn) + ' kn</b> ' + compass(w.deg) : '—'));
   if (!land) lines.push(line('Swell', v ? v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg) : '—'));
   lines.push(line('Sun', s == null ? '—' : s > 1 ? Math.round(s) + ' W/m²' : 'dark'));
-  if (air != null || sst != null)
-    lines.push(line('Temp', (air != null ? Math.round(air) + '° air' : '') +
-               (air != null && sst != null ? ' · ' : '') +
-               (sst != null && !land ? Math.round(sst) + '° sea' : '')));
+  const temps = [air != null ? Math.round(air) + '° air' : '', sst != null && !land ? Math.round(sst) + '° sea' : ''].filter(Boolean);
+  if (temps.length) lines.push(line('Temp', temps.join(' · ')));
   return L.divIcon({ className: 'cond-card', iconSize: null,
     html: '<div class="cc" style="border-left-color:' + (w ? windColor(w.kn) : '#7f8c8d') + '">' +
       lines.join('<br>') + '</div>' });
