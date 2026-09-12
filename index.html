@@ -2062,6 +2062,7 @@ const peopleTiles = (file, minZoom, maxNativeZoom, attribution, opts) => pmtiles
   Object.assign({ minZoom, maxNativeZoom, maxZoom: 19, zIndex: 10, opacity: 0.8, bounds: BR_BOUNDS, attribution }, opts));
 const konturPop = peopleTiles('people-kontur-br', 3, 11, 'Kontur Population 2023 (CC BY 4.0)');
 const hrslPop = peopleTiles('people-hrsl-br', 5, 12, 'Meta Data for Good / CIESIN HRSL (CC BY 4.0)');
+const hrslElderly = peopleTiles('people-hrsl-elderly-br', 5, 12, 'Meta Data for Good / CIESIN HRSL (CC BY 4.0)');
 // UKHO's worldwide wreck database, the one layer here with real coverage off Brazil;
 // below zoom 9 it paints most of the sea, so it starts there
 const wrecks = emodLayer('wwshipwrecks',
@@ -2932,7 +2933,7 @@ const LAYER_GROUPS = [
     [ppDot('C') + 'Coal plants (WRI)']: coalPP, [ppDot('O') + 'Oil plants (WRI)']: oilPP, [ppDot('N') + 'Nuclear plants (WRI)']: nuclearPP,
     [ppDot('B') + 'Biomass and waste plants (WRI)']: bioPP, [ppDot('T') + 'Geothermal plants (WRI)']: geoPP, [ppDot('V') + 'Wave and tidal plants (WRI)']: tidalPP, 'Cables and pipelines, offshore Europe (EMODnet)': cablesPipes, 'Brazil: gas pipelines and terminals (EPE)': epeGas, 'Brazil: oil terminals, refineries, pipeline plan (EPE)': epeOil,
     'Brazil: oil and gas fields, pre-salt (EPE/ANP)': epeFields, 'Brazil: power grid (EPE)': epeGrid, 'Offshore platforms (EMODnet)': platforms }],
-  ['People', 'check', { 'Brazil: population 400 m (Kontur 2023)': konturPop, 'Brazil: population 30 m (Meta HRSL 2018)': hrslPop, 'Population, 100 m (WorldPop 2020)': worldPop, 'Population density (GPWv4 2020)': popDensity, 'Settlement type (GHS-SMOD)': settlement, 'Built-up by era (GHS-BUILT)': builtEra,
+  ['People', 'check', { 'Brazil: population 400 m (Kontur 2023)': konturPop, 'Brazil: population 30 m (Meta HRSL 2018)': hrslPop, 'Brazil: share aged 60+, 30 m (Meta HRSL 2019)': hrslElderly, 'Population, 100 m (WorldPop 2020)': worldPop, 'Population density (GPWv4 2020)': popDensity, 'Settlement type (GHS-SMOD)': settlement, 'Built-up by era (GHS-BUILT)': builtEra,
     'Night lights 2016 (NASA Black Marble)': nightLights2016, 'GDP, gridded (Kummu 2015)': gdpGrid, 'GDP per capita (Kummu 2015)': gdpPerCap, 'Travel time to a city (MAP 2015)': travelTime,
     'Urban expansion to 2050': urban2050, 'Coastal land under 10 m (LECZ)': lecz, 'Human development index, subnational (GDL 2019)': hdi,
     'Brazil: 2022 census grid, people per km² (IBGE)': ibgeGrid, 'Brazil: GDP per capita by município 2022 (IBGE)': ibgePib, 'Brazil: population density 2020 (IBGE)': ibgeDensity,
@@ -3189,6 +3190,7 @@ live.on('add remove', syncShipKey); ships.on('add remove', syncShipKey);
 const RAMP_KEYS = new Map([
   [konturPop, ['People per km², 400 m cells', [['#ffffcc', '1'], ['#ffeda0', '10'], ['#feb24c', '100'], ['#f03b20', '1 000'], ['#bd0026', '10 000'], ['#4a0016', '50 000']]]],
   [hrslPop, ['People per km², 30 m cells', [['#ffffcc', '1'], ['#ffeda0', '10'], ['#feb24c', '100'], ['#f03b20', '1 000'], ['#bd0026', '10 000'], ['#4a0016', '50 000']]]],
+  [hrslElderly, ['Share of people aged 60+', [['#ffffcc', '5%'], ['#a1dab4', '10%'], ['#41b6c4', '15%'], ['#2c7fb8', '20%'], ['#253494', '30%']]]],
 ]);
 const rampKeyCtl = L.control({ position: 'bottomright' });
 rampKeyCtl.onAdd = () => L.DomUtil.create('div', 'ramp-key');
@@ -3250,7 +3252,7 @@ for (const c of COARSE) c[0].on('add', coarseNote);
 const BOUNDED = [[windFarms, 'Offshore wind farms', 'European waters only'], [anelWind, 'Brazil wind turbines', 'Brazil only'],
   [epeGas, 'Brazil gas network', 'Brazil only'], [epeOil, 'Brazil oil terminals', 'Brazil only'], [epeFields, 'Brazil oil and gas fields', 'Brazil only'], [epeGrid, 'Brazil power grid', 'Brazil only'], [platforms, 'Offshore platforms', 'European waters'],
   [cablesPipes, 'Cables and pipelines', null], [wrecks, 'Wrecks', null],
-  ...[[konturPop, 'Kontur population'], [hrslPop, 'HRSL population'], [ibgeGrid, 'Census grid'], [ibgePib, 'GDP per município'], [ibgeDensity, 'IBGE density'], [ibgeSectors, 'Census sectors'], [ibgeLowIncome, 'Low income'],
+  ...[[konturPop, 'Kontur population'], [hrslPop, 'HRSL population'], [hrslElderly, 'Share aged 60+'], [ibgeGrid, 'Census grid'], [ibgePib, 'GDP per município'], [ibgeDensity, 'IBGE density'], [ibgeSectors, 'Census sectors'], [ibgeLowIncome, 'Low income'],
     [ibgeIlliteracy, 'Illiteracy'], [ibgePoverty, 'Poverty by state'], [ibgeCoastDist, 'Distance to coast']].map(([l, n]) => [l, n, 'Brazil only'])];
 function boundedNote() {
   const z = map.getZoom(), v = map.getBounds();
