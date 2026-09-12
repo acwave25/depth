@@ -717,7 +717,8 @@ footer { flex-shrink:0; padding:0.6rem 1.5rem 0.85rem; display:flex; align-items
 .lyr-list label.off em { color:#c8102e; }
 .lyr-close { margin-left:auto; font:400 18px/1 'Outfit',sans-serif; width:28px; height:26px; border:0; border-radius:6px; background:transparent; color:var(--color-navy); cursor:pointer; }
 .lyr-close:hover { background:rgba(15,46,61,0.08); }
-.zoom-pill { font:500 11px/1 'Outfit',sans-serif; letter-spacing:.04em; color:var(--color-navy); background:rgba(255,255,255,0.9); border:1px solid rgba(15,46,61,0.15); border-radius:999px; padding:5px 9px; margin:0 10px 6px 0; }
+.zoom-pill { background:rgba(255,255,255,0.9); border:1px solid rgba(15,46,61,0.15); border-radius:999px; margin:0 10px 6px 0; }
+.zoom-pill select { font:500 11px/1 'Outfit',sans-serif; letter-spacing:.04em; color:var(--color-navy); background:transparent; border:0; padding:5px 9px; cursor:pointer; -webkit-appearance:none; appearance:none; }
 .leaflet-bar a { color:var(--color-navy) !important; }
 .city-dot { width:10px; height:10px; background:var(--color-yellow);
   border:1.5px solid var(--color-navy); border-radius:50%; }
@@ -2816,7 +2817,12 @@ lyrCtl.onAdd = () => {
         if (kind === 'radio') {
           for (const l of Object.values(layers)) if (l !== layer && map.hasLayer(l)) map.removeLayer(l);
           layer.addTo(map); map.fire('baselayerchange', { layer });
-        } else if (inp.checked) layer.addTo(map); else map.removeLayer(layer);
+        } else if (inp.checked) {
+          layer.addTo(map);
+          // a layer switched on outside its zoom window would show nothing; go to the nearest zoom where it draws
+          const [lo, hi] = zoomWindow(layer), z = map.getZoom();
+          if (z < lo) map.setZoom(lo); else if (z > hi) map.setZoom(hi);
+        } else map.removeLayer(layer);
       };
       layer.on('add remove', () => { inp.checked = map.hasLayer(layer); mark(); });
     }
@@ -2841,7 +2847,16 @@ lyrCtl.onAdd = () => {
 lyrCtl.addTo(map);
 /* Every layer has a zoom window; the number makes the panel's ranges and the notes meaningful. */
 const zoomCtl = L.control({ position: 'bottomright' });
-zoomCtl.onAdd = () => { const d = L.DomUtil.create('div', 'zoom-pill'); d.textContent = 'zoom ' + map.getZoom(); map.on('zoomend', () => { d.textContent = 'zoom ' + map.getZoom(); }); return d; };
+zoomCtl.onAdd = () => {
+  const d = L.DomUtil.create('div', 'zoom-pill');
+  const sel = L.DomUtil.create('select', '', d);
+  for (let z = 2; z <= 19; z++) { const o = L.DomUtil.create('option', '', sel); o.value = z; o.textContent = 'zoom ' + z; }
+  const sync = () => { sel.value = String(map.getZoom()); };
+  sel.onchange = () => map.setZoom(+sel.value);
+  L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+  map.on('zoomend', sync); sync();
+  return d;
+};
 zoomCtl.addTo(map);
 
 const places = [
