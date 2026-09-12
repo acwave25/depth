@@ -880,7 +880,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </nav>
 <div class="titlebar">
   <h1><span>Bathymetry</span><span class="title-slash">//</span><span class="title-lite">world charts · depth · wind · sea state</span></h1>
-  <div class="readout" id="readout">tap the map for depth, wind, temp</div>
+  <div class="readout" id="readout">tap (or double-tap) the map for depth, wind, temp</div>
 </div>
 <div class="presets" id="presets">
   <div class="flyto">
@@ -2525,7 +2525,7 @@ function toggleMeasure() {
     clearMeasure();
   } else {
     clearMeasure();
-    map.doubleClickZoom.enable(); map.removeLayer(measLayer);
+    map.removeLayer(measLayer);
     if (measPanel._map) map.removeControl(measPanel);
   }
 }
@@ -3466,7 +3466,13 @@ async function showInfo(lat, lng) {
   paint();
 }
 
-map.on('click', e => { if (!measuring) showInfo(e.latlng.lat, e.latlng.lng); });
+/* Tap for details, but a tap that lands just after a pan or zoom is navigation (stopping the glide,
+   finishing a pinch) and is ignored; a double tap always asks, so double-click zoom is off. */
+let lastMove = 0;
+map.on('moveend zoomend', () => { lastMove = Date.now(); });
+map.doubleClickZoom.disable();
+map.on('click', e => { if (!measuring && Date.now() - lastMove > 300) showInfo(e.latlng.lat, e.latlng.lng); });
+map.on('dblclick', e => { if (!measuring) showInfo(e.latlng.lat, e.latlng.lng); });
 </script>
 </body>
 </html>
