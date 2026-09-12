@@ -841,7 +841,7 @@ body.immersive .leaflet-bottom { padding-bottom:env(safe-area-inset-bottom); }
 </div>
 <div id="map"></div>
 <footer>
-  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · power plants WRI GPPD (CC BY 4.0) · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
+  <span class="src" id="attrib">Cartas náuticas © DHN/CHM Marinha do Brasil (uso não comercial) · NOAA ENC · SHN Argentina · DIMAR Colombia · Sjómælingar Íslands · Sjöfartsverket · INFOMAR (CC BY 4.0) · Vlaamse Hydrografie · IHM España · IH Portugal · CHS Canada · AHO Australia · Kartverket · Traficom · BHMW · EMODnet · OpenSeaMap · wind, sea state, solar Open-Meteo · MSIL 海上保安庁 · BSH (GeoNutzV) · Rijkswaterstaat (CC0) · solar yield Global Solar Atlas (World Bank/Solargis, CC BY 4.0) · tides, squall, fog Open-Meteo · LINZ (CC BY 4.0) · AIS Fintraffic (CC BY 4.0), Kystverket (NLOD) · warnings NWS · SHOM (CC BY-SA) · imagery NASA EOSDIS GIBS · events NASA EONET · nav warnings NGA MSI · hazards GDACS · quakes USGS · chokepoints IMF PortWatch · tide gauges NOAA CO-OPS · EMODnet Human Activities (CC BY 4.0), wrecks © UKHO · turbines ANEEL/SIGEL · power plants WRI GPPD (CC BY 4.0) · ocean layers via Resource Watch (WRI) · mangroves Global Mangrove Watch · cyclones NOAA/NHC · rain RainViewer · GMRT (CC-BY) · GEBCO · Esri Ocean · OpenSeaMap</span>
   <span class="src">charts as published by DHN; check Avisos aos Navegantes for corrections — GMRT contours are NOT for navigation</span>
 </footer>
 <script src="extremes-points.js"></script>
@@ -1885,6 +1885,52 @@ const powerLayer = (filter) => {
 };
 const windWorld = powerLayer(p => p[3] === 'W');
 const powerAll = powerLayer(() => true);
+/* ---------- WRI Resource Watch: the rest of WRI's ocean catalogue ----------
+   Two delivery paths. Rasters come from Google Earth Engine through RW's keyless tile proxy;
+   vector tables sit on Carto and need a map instantiated first, whose id is not permanent,
+   so it is fetched fresh each time the layer is switched on. */
+const RW = 'https://api.resourcewatch.org/v1/layer/';
+const rwAttr = src => src + ' via Resource Watch (WRI)';
+const rwGee = (id, src, opts) => L.tileLayer(RW + id + '/tile/gee/{z}/{x}/{y}', Object.assign(
+  { minZoom: 3, maxNativeZoom: 12, maxZoom: 19, opacity: 0.75, attribution: rwAttr(src) }, opts));
+const rwCarto = (id, name, src, opts) => {
+  const g = L.layerGroup(); let tl = null, busy = null;
+  g.on('add', async () => {
+    if (tl) return;
+    busy = busy || (async () => {
+      const cfg = (await (await fetch(RW + id)).json()).data.attributes.layerConfig;
+      const acct = cfg.account || 'wri-rw';
+      const r = await (await fetch('https://' + acct + '.carto.com/api/v1/map?config=' +
+        encodeURIComponent(JSON.stringify({ version: '1.3.0', layers: cfg.body.layers })))).json();
+      if (!r.layergroupid) throw new Error('no map');
+      return 'https://{s}.gusc.cartocdn.com/' + acct + '/api/v1/map/' + r.layergroupid + '/{z}/{x}/{y}.png';
+    })();
+    try {
+      const url = await busy;
+      tl = L.tileLayer(url, Object.assign({ subdomains: 'abcd', maxZoom: 19, zIndex: 10, attribution: rwAttr(src) }, opts));
+      if (map.hasLayer(g)) tl.addTo(g);
+    } catch (e) { busy = null; chartMsg.textContent = name + ' unavailable right now'; }
+  });
+  return g;
+};
+// sea
+const sstAnom = rwGee('fe0833b0-1f84-45cf-8451-4eb381336842', 'NOAA Coral Reef Watch');
+const bleach = rwGee('b0dfb68e-b940-44de-a37f-6833bdfa70f9', 'NOAA Coral Reef Watch', { opacity: 0.85 });
+const plastic = rwGee('67e7c4d8-bb95-4267-9459-3455189440d7', 'Eriksen et al. 2014 (CC0)');
+const acid = rwGee('1b810cf4-0025-4865-a741-793488362a10', 'NOAA');
+const mpa = rwCarto('e67c1446-4e8f-4e0b-b4ae-3b2d56bcee6e', 'Marine protected areas', 'WDPA / Protected Planet', { minZoom: 3, opacity: 0.6 });
+const reefs = rwCarto('5de4d3c8-bd99-4fa2-99f2-5724275afd67', 'Coral reefs', 'UNEP-WCMC');
+const mangroves = L.tileLayer('https://tiles.globalforestwatch.org/gmw_global_mangrove_extent/v3/default/{z}/{x}/{y}.png',
+  { minZoom: 2, maxNativeZoom: 12, maxZoom: 19, zIndex: 10, opacity: 0.85, attribution: 'Global Mangrove Watch (CC BY 4.0)' });
+// hazards
+const cycloneHist = rwGee('8af415b4-6da3-43a0-abbd-d470e91c16c7', 'UNEP/GRID-Europe');
+const coastFlood = rwGee('46545f3f-52d4-4862-a7e3-9ffc7c6e46e7', 'WRI Aqueduct Floods (CC BY 4.0)', { opacity: 0.85 });
+const slr = rwGee('9d8d2faf-7a20-45c6-811f-634a87661f37', 'Climate Central', { opacity: 0.8 });
+// traffic
+const shipDensity = rwGee('096b7e26-a2b9-4c17-a32c-07ceed9dc27a', 'NOAA / NCEAS');
+const ports = rwCarto('1f855d5f-9dae-4cb4-9a22-634fd646ccf2', 'Major ports', 'NGA World Port Index');
+// weather
+const windAtlas = rwGee('1ae1f58f-569d-4a21-9835-3e9bdd93759b', 'Global Wind Atlas (DTU/World Bank, CC BY 4.0)', { opacity: 0.6 });
 // UKHO's worldwide wreck database, the one layer here with real coverage off Brazil;
 // below zoom 9 it paints most of the sea, so it starts there
 const wrecks = emodLayer('wwshipwrecks',
@@ -2712,10 +2758,12 @@ const LAYER_GROUPS = [
   ['Base', 'radio', { 'Plain (Esri)': plain, 'Satellite (Esri)': sat, 'Esri Ocean basemap': esri, 'GMRT (finest, multibeam — slow)': gmrt, 'GEBCO shaded': gebco }],
   ['Charts', 'check', { 'Official nautical charts': charts, 'Depth contours (OpenSeaMap)': osmDepth, 'Depth contours + soundings': chart, 'Buoys, lights (OpenSeaMap)': seamarks, 'Place names (Esri)': esriRef,
     'Depth, Europe (EMODnet)': emodnet, 'Depth, Ireland 10 m (INFOMAR)': infomar, 'Depth, Belgium 10 m (MDK)': belgium }],
-  ['Weather', 'check', { 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Rain radar (RainViewer)': radar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts }],
-  ['Sea', 'check', { 'Sea surface temperature (NASA)': sst, 'Tide gauges, measured (NOAA)': tides, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Satellite, yesterday (NASA)': trueColor, 'Dust and aerosol (NASA)': dust }],
-  ['Hazards', 'check', { 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn, 'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet, 'Wrecks, worldwide (UKHO)': wrecks }],
-  ['Traffic', 'check', { 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Shipping chokepoints (IMF)': chokepoints, 'Night lights, fishing fleets (NASA)': nightLights }],
+  ['Weather', 'check', { 'Wind, swell &amp; sun (Open-Meteo)': conditions, 'Rain radar (RainViewer)': radar, 'Tropical cyclones (NOAA)': cyclones, 'US marine warnings (NWS)': alerts, 'Average wind at 50 m (Global Wind Atlas)': windAtlas }],
+  ['Sea', 'check', { 'Sea surface temperature (NASA)': sst, 'Tide gauges, measured (NOAA)': tides, 'Chlorophyll (NASA)': chloro, 'Sea ice (NASA)': seaIce, 'Satellite, yesterday (NASA)': trueColor, 'Dust and aerosol (NASA)': dust,
+    'Sea temp anomaly (NOAA CRW)': sstAnom, 'Coral bleaching alerts (NOAA CRW)': bleach, 'Coral reefs (UNEP-WCMC)': reefs, 'Mangroves (Global Mangrove Watch)': mangroves, 'Marine protected areas (WDPA)': mpa, 'Floating plastic (Eriksen 2014)': plastic, 'Acidification 2050 (NOAA)': acid }],
+  ['Hazards', 'check', { 'Global hazards (GDACS)': hazards, 'Nav warnings, worldwide (NGA)': navwarn, 'Earthquakes, 24 h (USGS)': quakes, 'Icebergs and volcanoes (NASA)': eonet, 'Wrecks, worldwide (UKHO)': wrecks,
+    'Cyclone history 1970-2009 (UNEP)': cycloneHist, 'Coastal flood depth, 1-in-100 yr (Aqueduct)': coastFlood, 'Land under 0.5 m sea-level rise (Climate Central)': slr }],
+  ['Traffic', 'check', { 'Ship traffic, live worldwide (AIS)': live, 'Ship traffic, official (Baltic, Norway)': ships, 'Shipping chokepoints (IMF)': chokepoints, 'Night lights, fishing fleets (NASA)': nightLights, 'Major ports (World Port Index)': ports, 'Shipping density 2004-05 (NOAA)': shipDensity }],
   ['Infrastructure', 'check', { 'Wind farms, offshore Europe (EMODnet)': windFarms, 'Wind turbines, Brazil (ANEEL)': anelWind, 'Wind farms, worldwide (WRI)': windWorld, 'Power plants, all fuels (WRI)': powerAll, 'Cables and pipelines (EMODnet)': cablesPipes, 'Offshore platforms (EMODnet)': platforms }],
 ];
 const lyrCtl = L.control({ position: 'topright' });
