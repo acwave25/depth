@@ -2468,19 +2468,19 @@ function condIcon(d) {
      could read at a glance, which was the whole complaint about the old stacked layers. */
   const air = d.air && d.air[i] != null ? d.air[i] : null;
   const sst = d.sst && d.sst[i] != null ? d.sst[i] : null;
-  if (d.elev > 0) return null;   // this is a sea forecast; inland cells had nothing to say
   if (!w && !v && s == null && air == null) return null;
+  const land = d.elev > 0;   // inland there is no swell line; wind, sun and air temperature still apply
   // every line is labelled: four bare numbers in a stack told you nothing about which was which.
   // "all" means all of it, so a line that has nothing to say still shows, rather than vanishing
   const line = (k, v) => '<i>' + k + '</i>' + v;
   const lines = [];
   lines.push(line('Wind', w ? '<b>' + Math.round(w.kn) + ' kn</b> ' + compass(w.deg) : '—'));
-  lines.push(line('Swell', v ? v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg) : '—'));
+  if (!land) lines.push(line('Swell', v ? v.m.toFixed(1) + ' m · ' + Math.round(v.t || 0) + ' s ' + compass(v.deg) : '—'));
   lines.push(line('Sun', s == null ? '—' : s > 1 ? Math.round(s) + ' W/m²' : 'dark'));
   if (air != null || sst != null)
     lines.push(line('Temp', (air != null ? Math.round(air) + '° air' : '') +
                (air != null && sst != null ? ' · ' : '') +
-               (sst != null ? Math.round(sst) + '° sea' : '')));
+               (sst != null && !land ? Math.round(sst) + '° sea' : '')));
   return L.divIcon({ className: 'cond-card', iconSize: null,
     html: '<div class="cc" style="border-left-color:' + (w ? windColor(w.kn) : '#7f8c8d') + '">' +
       lines.join('<br>') + '</div>' });
